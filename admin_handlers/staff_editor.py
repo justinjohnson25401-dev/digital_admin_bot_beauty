@@ -1,0 +1,971 @@
+"""
+Управление персоналом - мастера, графики, закрытые даты.
+"""
+
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from datetime import datetime, timedelta
+
+from admin_bot.states import StaffEditorStates, ClosedDatesStates
+from utils.config_editor import ConfigEditor
+from utils.staff_manager import StaffManager
+from utils.validators import validate_master_name, validate_master_role, validate_date_format
+
+router = Router()
+
+
+def get_config_editor(config: dict) -> ConfigEditor:
+    """Получить ConfigEditor с правильным путём"""
+    config_path = f"configs/{config.get('business_slug', 'client_lite')}.json"
+    return ConfigEditor(config_path)
+
+
+@router.callback_query(F.data == "staff_menu")
+async def show_staff_menu(callback: CallbackQuery, config: dict):
+    """Главное меню управления персоналом"""
+
+    staff_data = config.get('staff', {})
+    is_enabled = staff_data.get('enabled', False)
+    masters = staff_data.get('masters', [])
+
+    status = "✅ Включена" if is_enabled else "❌ Отключена"
+
+    text = f"""
+👤 <b>УПРАВЛЕНИЕ ПЕРСОНАЛОМ</b>
+
+Функция персонала: <b>{status}</b>
+
+"""
+
+    if masters:
+        text += f"Текущий состав ({len(masters)}):\n\n"
+        for master in masters:
+            services_count = len(master.get('services', []))
+            text += f"👤 <b>{master['name']}</b> — {master.get('role', 'Мастер')}\n"
+            text += f"   📋 Услуг: {services_count}\n\n"
+    else:
+        text += "<i>Мастера не добавлены</i>\n\n"
+
+    text += "Выберите действие:"
+
+    toggle_text = "🔴 Выключить персонал" if is_enabled else "🟢 Включить персонал"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=toggle_text, callback_data="toggle_staff")],
+        [InlineKeyboardButton(text="➕ Добавить мастера", callback_data="add_master")],
+        [InlineKeyboardButton(text="✏️ Редактировать мастера", callback_data="edit_master_list")],
+        [InlineKeyboardButton(text="📅 Закрытые даты", callback_data="closed_dates_menu")],
+        [InlineKeyboardButton(text="🗑 Удалить мастера", callback_data="delete_master_list")],
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "toggle_staff")
+async def toggle_staff_feature(callback: CallbackQuery, config: dict, config_manager):
+    """Включить/выключить функцию персонала"""
+
+    editor = get_config_editor(config)
+    current = config.get('staff', {}).get('enabled', False)
+
+    editor.toggle_staff_feature(not current)
+
+    # Обновляем config в памяти
+    if 'staff' not in config:
+        config['staff'] = {'enabled': False, 'masters': []}
+    config['staff']['enabled'] = not current
+
+    # Обновляем config_manager
+    config_manager.config['staff'] = config['staff']
+
+    status = "✅ Включена" if not current else "❌ Отключена"
+    await callback.answer(f"Функция персонала: {status}")
+
+    await show_staff_menu(callback, config)
+
+
+# ==================== ДОБАВЛЕНИЕ МАСТЕРА ====================
+
+@router.callback_query(F.data == "add_master")
+async def add_master_start(callback: CallbackQuery, state: FSMContext):
+    """Начать добавление мастера"""
+
+    text = """
+➕ <b>ДОБАВЛЕНИЕ МАСТЕРА</b>
+
+Шаг 1 из 4: Введите имя мастера (от 2 до 50 символов):
+
+<i>Например: Анна, Мария Иванова</i>
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.enter_name)
+    await callback.answer()
+
+
+@router.message(StaffEditorStates.enter_name)
+async def add_master_name(message: Message, state: FSMContext):
+    """Сохранить имя мастера"""
+
+    name = message.text.strip()
+
+    is_valid, error = validate_master_name(name)
+
+    if not is_valid:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")],
+        ])
+        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
+        return
+
+    await state.update_data(master_name=name)
+
+    text = f"""
+✅ Имя: <b>{name}</b>
+
+Шаг 2 из 4: Введите должность/специализацию:
+
+<i>Например: Парикмахер, Мастер маникюра, Косметолог</i>
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")],
+    ])
+
+    await message.answer(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.enter_role)
+
+
+@router.message(StaffEditorStates.enter_role)
+async def add_master_role(message: Message, state: FSMContext, config: dict):
+    """Сохранить должность мастера"""
+
+    role = message.text.strip()
+
+    is_valid, error = validate_master_role(role)
+
+    if not is_valid:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")],
+        ])
+        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
+        return
+
+    await state.update_data(master_role=role)
+
+    # Получаем список услуг
+    services = config.get('services', [])
+
+    if not services:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="staff_menu")],
+        ])
+        await message.answer(
+            "❌ В системе нет услуг. Сначала добавьте услуги в разделе «Услуги».",
+            reply_markup=keyboard
+        )
+        await state.clear()
+        return
+
+    data = await state.get_data()
+
+    text = f"""
+✅ Имя: <b>{data['master_name']}</b>
+✅ Должность: <b>{role}</b>
+
+Шаг 3 из 4: Выберите услуги, которые выполняет мастер.
+
+Нажимайте на услуги для выбора, затем «Продолжить»:
+"""
+
+    # Инициализируем выбранные услуги
+    await state.update_data(selected_services=[])
+
+    keyboard_rows = []
+    for service in services:
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"☐ {service['name']} ({service['price']}₽)",
+                callback_data=f"select_service_{service['id']}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="✅ Продолжить", callback_data="services_done")])
+    keyboard_rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await message.answer(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.choose_services)
+
+
+@router.callback_query(F.data.startswith("select_service_"), StaffEditorStates.choose_services)
+async def toggle_service_selection(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Переключить выбор услуги"""
+
+    service_id = callback.data.replace("select_service_", "")
+
+    data = await state.get_data()
+    selected = data.get('selected_services', [])
+
+    if service_id in selected:
+        selected.remove(service_id)
+    else:
+        selected.append(service_id)
+
+    await state.update_data(selected_services=selected)
+
+    # Обновляем клавиатуру
+    services = config.get('services', [])
+
+    keyboard_rows = []
+    for service in services:
+        is_selected = service['id'] in selected
+        mark = "☑" if is_selected else "☐"
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"{mark} {service['name']} ({service['price']}₽)",
+                callback_data=f"select_service_{service['id']}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="✅ Продолжить", callback_data="services_done")])
+    keyboard_rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "services_done", StaffEditorStates.choose_services)
+async def services_selected(callback: CallbackQuery, state: FSMContext):
+    """Услуги выбраны, переходим к графику"""
+
+    data = await state.get_data()
+    selected = data.get('selected_services', [])
+
+    if not selected:
+        await callback.answer("❌ Выберите хотя бы одну услугу", show_alert=True)
+        return
+
+    text = f"""
+✅ Имя: <b>{data['master_name']}</b>
+✅ Должность: <b>{data['master_role']}</b>
+✅ Услуг выбрано: <b>{len(selected)}</b>
+
+Шаг 4 из 4: Выберите график работы:
+"""
+
+    templates = StaffManager.get_schedule_templates()
+
+    keyboard_rows = []
+    for template_id, description in templates.items():
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"📅 {description}",
+                callback_data=f"template_{template_id}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.choose_schedule_template)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("template_"), StaffEditorStates.choose_schedule_template)
+async def apply_schedule_template(callback: CallbackQuery, state: FSMContext, config: dict, config_manager):
+    """Применить шаблон графика и сохранить мастера"""
+
+    template_id = callback.data.replace("template_", "")
+
+    schedule = StaffManager.create_default_schedule(template_id)
+
+    data = await state.get_data()
+
+    master_data = {
+        "name": data['master_name'],
+        "role": data['master_role'],
+        "photo_url": None,
+        "services": data['selected_services'],
+        "schedule": schedule,
+        "closed_dates": []
+    }
+
+    # Сохраняем
+    editor = get_config_editor(config)
+    master_id = editor.add_master(master_data)
+
+    # Обновляем config в памяти
+    if 'staff' not in config:
+        config['staff'] = {'enabled': False, 'masters': []}
+
+    master_data['id'] = master_id
+    config['staff']['masters'].append(master_data)
+    config_manager.config['staff'] = config['staff']
+
+    templates = StaffManager.get_schedule_templates()
+    schedule_desc = templates.get(template_id, template_id)
+
+    text = f"""
+✅ <b>МАСТЕР ДОБАВЛЕН!</b>
+
+👤 <b>{data['master_name']}</b>
+💼 {data['master_role']}
+📋 Услуг: {len(data['selected_services'])}
+📅 График: {schedule_desc}
+
+<i>ID мастера: {master_id}</i>
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.clear()
+    await callback.answer("✅ Мастер добавлен!")
+
+
+# ==================== РЕДАКТИРОВАНИЕ МАСТЕРА ====================
+
+@router.callback_query(F.data == "edit_master_list")
+async def edit_master_list(callback: CallbackQuery, config: dict):
+    """Список мастеров для редактирования"""
+
+    masters = config.get('staff', {}).get('masters', [])
+
+    if not masters:
+        await callback.answer("Нет мастеров для редактирования", show_alert=True)
+        return
+
+    text = "✏️ <b>РЕДАКТИРОВАНИЕ МАСТЕРА</b>\n\nВыберите мастера:"
+
+    keyboard_rows = []
+    for master in masters:
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"👤 {master['name']} — {master.get('role', 'Мастер')}",
+                callback_data=f"edit_master_{master['id']}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="staff_menu")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit_master_") & ~F.data.startswith("edit_master_list"))
+async def edit_master_show(callback: CallbackQuery, config: dict):
+    """Показать информацию о мастере для редактирования"""
+
+    master_id = callback.data.replace("edit_master_", "")
+
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m['id'] == master_id), None)
+
+    if not master:
+        await callback.answer("❌ Мастер не найден", show_alert=True)
+        return
+
+    staff_manager = StaffManager(config)
+    services_names = staff_manager.get_master_services_names(master)
+    schedule_summary = staff_manager.get_schedule_summary(master)
+
+    text = f"""
+✏️ <b>РЕДАКТИРОВАНИЕ: {master['name']}</b>
+
+👤 <b>Имя:</b> {master['name']}
+💼 <b>Должность:</b> {master.get('role', 'Не указана')}
+📋 <b>Услуги:</b> {', '.join(services_names) if services_names else 'Не выбраны'}
+📅 <b>График:</b> {schedule_summary}
+
+Что изменить?
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ Изменить имя", callback_data=f"edit_master_name_{master_id}")],
+        [InlineKeyboardButton(text="✏️ Изменить должность", callback_data=f"edit_master_role_{master_id}")],
+        [InlineKeyboardButton(text="📋 Изменить услуги", callback_data=f"edit_master_services_{master_id}")],
+        [InlineKeyboardButton(text="📅 Изменить график", callback_data=f"edit_master_schedule_{master_id}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="edit_master_list")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit_master_name_"))
+async def edit_master_name_start(callback: CallbackQuery, state: FSMContext):
+    """Начать редактирование имени мастера"""
+
+    master_id = callback.data.replace("edit_master_name_", "")
+
+    text = "✏️ Введите новое имя мастера:"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"edit_master_{master_id}")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.edit_name)
+    await state.update_data(editing_master_id=master_id)
+    await callback.answer()
+
+
+@router.message(StaffEditorStates.edit_name)
+async def edit_master_name_save(message: Message, state: FSMContext, config: dict, config_manager):
+    """Сохранить новое имя мастера"""
+
+    data = await state.get_data()
+    master_id = data.get('editing_master_id')
+    new_name = message.text.strip()
+
+    is_valid, error = validate_master_name(new_name)
+
+    if not is_valid:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"edit_master_{master_id}")],
+        ])
+        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
+        return
+
+    # Сохраняем
+    editor = get_config_editor(config)
+    editor.update_master(master_id, {'name': new_name})
+
+    # Обновляем в памяти
+    for master in config.get('staff', {}).get('masters', []):
+        if master['id'] == master_id:
+            master['name'] = new_name
+            break
+
+    config_manager.config['staff'] = config['staff']
+
+    await message.answer(f"✅ Имя обновлено: <b>{new_name}</b>")
+    await state.clear()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+    ])
+    await message.answer("Выберите действие:", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("edit_master_role_"))
+async def edit_master_role_start(callback: CallbackQuery, state: FSMContext):
+    """Начать редактирование должности мастера"""
+
+    master_id = callback.data.replace("edit_master_role_", "")
+
+    text = "✏️ Введите новую должность/специализацию:"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"edit_master_{master_id}")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.edit_role)
+    await state.update_data(editing_master_id=master_id)
+    await callback.answer()
+
+
+@router.message(StaffEditorStates.edit_role)
+async def edit_master_role_save(message: Message, state: FSMContext, config: dict, config_manager):
+    """Сохранить новую должность мастера"""
+
+    data = await state.get_data()
+    master_id = data.get('editing_master_id')
+    new_role = message.text.strip()
+
+    is_valid, error = validate_master_role(new_role)
+
+    if not is_valid:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"edit_master_{master_id}")],
+        ])
+        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
+        return
+
+    # Сохраняем
+    editor = get_config_editor(config)
+    editor.update_master(master_id, {'role': new_role})
+
+    # Обновляем в памяти
+    for master in config.get('staff', {}).get('masters', []):
+        if master['id'] == master_id:
+            master['role'] = new_role
+            break
+
+    config_manager.config['staff'] = config['staff']
+
+    await message.answer(f"✅ Должность обновлена: <b>{new_role}</b>")
+    await state.clear()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+    ])
+    await message.answer("Выберите действие:", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("edit_master_schedule_"))
+async def edit_master_schedule(callback: CallbackQuery, config: dict):
+    """Изменить график мастера"""
+
+    master_id = callback.data.replace("edit_master_schedule_", "")
+
+    text = "📅 <b>ИЗМЕНЕНИЕ ГРАФИКА</b>\n\nВыберите новый шаблон графика:"
+
+    templates = StaffManager.get_schedule_templates()
+
+    keyboard_rows = []
+    for template_id, description in templates.items():
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"📅 {description}",
+                callback_data=f"apply_schedule_{master_id}_{template_id}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_master_{master_id}")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("apply_schedule_"))
+async def apply_new_schedule(callback: CallbackQuery, config: dict, config_manager):
+    """Применить новый шаблон графика"""
+
+    parts = callback.data.replace("apply_schedule_", "").split("_", 1)
+    if len(parts) != 2:
+        await callback.answer("❌ Ошибка", show_alert=True)
+        return
+
+    master_id, template_id = parts
+
+    schedule = StaffManager.create_default_schedule(template_id)
+
+    # Сохраняем
+    editor = get_config_editor(config)
+    editor.update_master(master_id, {'schedule': schedule})
+
+    # Обновляем в памяти
+    for master in config.get('staff', {}).get('masters', []):
+        if master['id'] == master_id:
+            master['schedule'] = schedule
+            break
+
+    config_manager.config['staff'] = config['staff']
+
+    templates = StaffManager.get_schedule_templates()
+    schedule_desc = templates.get(template_id, template_id)
+
+    await callback.answer(f"✅ График обновлён: {schedule_desc}")
+
+    # Возвращаемся к мастеру
+    await edit_master_show(callback, config)
+
+
+# ==================== УДАЛЕНИЕ МАСТЕРА ====================
+
+@router.callback_query(F.data == "delete_master_list")
+async def delete_master_list(callback: CallbackQuery, config: dict):
+    """Список мастеров для удаления"""
+
+    masters = config.get('staff', {}).get('masters', [])
+
+    if not masters:
+        await callback.answer("Нет мастеров для удаления", show_alert=True)
+        return
+
+    text = "🗑 <b>УДАЛЕНИЕ МАСТЕРА</b>\n\nВыберите мастера для удаления:"
+
+    keyboard_rows = []
+    for master in masters:
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"🗑 {master['name']} — {master.get('role', 'Мастер')}",
+                callback_data=f"delete_master_{master['id']}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="staff_menu")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("delete_master_") & ~F.data.startswith("delete_master_list"))
+async def delete_master_confirm(callback: CallbackQuery, config: dict):
+    """Подтверждение удаления мастера"""
+
+    master_id = callback.data.replace("delete_master_", "")
+
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m['id'] == master_id), None)
+
+    if not master:
+        await callback.answer("❌ Мастер не найден", show_alert=True)
+        return
+
+    text = f"""
+⚠️ <b>УДАЛЕНИЕ МАСТЕРА</b>
+
+Вы уверены, что хотите удалить мастера?
+
+👤 <b>{master['name']}</b>
+💼 {master.get('role', 'Мастер')}
+
+<i>Это действие нельзя отменить!</i>
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_master_{master_id}"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="delete_master_list"),
+        ],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("confirm_delete_master_"))
+async def delete_master_execute(callback: CallbackQuery, config: dict, config_manager):
+    """Выполнить удаление мастера"""
+
+    master_id = callback.data.replace("confirm_delete_master_", "")
+
+    # Находим мастера для имени
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m['id'] == master_id), None)
+    master_name = master['name'] if master else 'Неизвестный'
+
+    # Удаляем
+    editor = get_config_editor(config)
+    editor.delete_master(master_id)
+
+    # Обновляем в памяти
+    config['staff']['masters'] = [m for m in masters if m['id'] != master_id]
+    config_manager.config['staff'] = config['staff']
+
+    await callback.answer(f"✅ Мастер \"{master_name}\" удалён!")
+
+    await show_staff_menu(callback, config)
+
+
+# ==================== ЗАКРЫТЫЕ ДАТЫ ====================
+
+@router.callback_query(F.data == "closed_dates_menu")
+async def closed_dates_menu(callback: CallbackQuery, config: dict):
+    """Меню управления закрытыми датами"""
+
+    masters = config.get('staff', {}).get('masters', [])
+
+    if not masters:
+        await callback.answer("Сначала добавьте мастеров", show_alert=True)
+        return
+
+    text = """
+📅 <b>ЗАКРЫТЫЕ ДАТЫ</b>
+
+Здесь вы можете закрыть определённые даты для мастеров (отпуск, больничный и т.д.)
+
+Выберите мастера:
+"""
+
+    keyboard_rows = []
+    for master in masters:
+        closed_count = len(master.get('closed_dates', []))
+        badge = f" ({closed_count})" if closed_count > 0 else ""
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"👤 {master['name']}{badge}",
+                callback_data=f"closed_dates_{master['id']}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="staff_menu")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("closed_dates_") & ~F.data.startswith("closed_dates_menu"))
+async def show_master_closed_dates(callback: CallbackQuery, config: dict):
+    """Показать закрытые даты мастера"""
+
+    master_id = callback.data.replace("closed_dates_", "")
+
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m['id'] == master_id), None)
+
+    if not master:
+        await callback.answer("❌ Мастер не найден", show_alert=True)
+        return
+
+    staff_manager = StaffManager(config)
+    closed_text = staff_manager.format_closed_dates(master, limit=10)
+
+    text = f"""
+📅 <b>ЗАКРЫТЫЕ ДАТЫ: {master['name']}</b>
+
+{closed_text}
+
+Выберите действие:
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить закрытую дату", callback_data=f"add_closed_{master_id}")],
+        [InlineKeyboardButton(text="🗑 Удалить закрытую дату", callback_data=f"remove_closed_list_{master_id}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="closed_dates_menu")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("add_closed_"))
+async def add_closed_date_start(callback: CallbackQuery, state: FSMContext):
+    """Начать добавление закрытой даты"""
+
+    master_id = callback.data.replace("add_closed_", "")
+
+    # Показываем ближайшие 14 дней
+    today = datetime.now().date()
+    dates = []
+    for i in range(14):
+        d = today + timedelta(days=i)
+        dates.append(d)
+
+    keyboard_rows = []
+    row = []
+    for d in dates:
+        day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][d.weekday()]
+        btn_text = f"{d.day:02d}.{d.month:02d} {day_name}"
+        row.append(InlineKeyboardButton(
+            text=btn_text,
+            callback_data=f"select_closed_date_{master_id}_{d.isoformat()}"
+        ))
+        if len(row) == 3:
+            keyboard_rows.append(row)
+            row = []
+
+    if row:
+        keyboard_rows.append(row)
+
+    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"closed_dates_{master_id}")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    text = "📅 <b>ДОБАВЛЕНИЕ ЗАКРЫТОЙ ДАТЫ</b>\n\nВыберите дату:"
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("select_closed_date_"))
+async def select_closed_date(callback: CallbackQuery, state: FSMContext):
+    """Выбрана дата для закрытия"""
+
+    parts = callback.data.replace("select_closed_date_", "").split("_", 1)
+    if len(parts) != 2:
+        await callback.answer("❌ Ошибка", show_alert=True)
+        return
+
+    master_id, date_str = parts
+
+    await state.update_data(closing_master_id=master_id, closing_date=date_str)
+
+    date_obj = datetime.fromisoformat(date_str).date()
+    date_display = date_obj.strftime('%d.%m.%Y')
+
+    text = f"""
+📅 Дата: <b>{date_display}</b>
+
+Введите причину закрытия (необязательно):
+
+<i>Например: Отпуск, Больничный, Выходной</i>
+
+Или нажмите «Пропустить» для сохранения без причины.
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"save_closed_no_reason_{master_id}_{date_str}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"closed_dates_{master_id}")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(ClosedDatesStates.enter_reason)
+    await callback.answer()
+
+
+@router.message(ClosedDatesStates.enter_reason)
+async def save_closed_with_reason(message: Message, state: FSMContext, config: dict, config_manager):
+    """Сохранить закрытую дату с причиной"""
+
+    data = await state.get_data()
+    master_id = data.get('closing_master_id')
+    date_str = data.get('closing_date')
+    reason = message.text.strip()[:100]  # Ограничение 100 символов
+
+    # Сохраняем
+    editor = get_config_editor(config)
+    editor.add_closed_date(master_id, date_str, reason)
+
+    # Обновляем в памяти
+    for master in config.get('staff', {}).get('masters', []):
+        if master['id'] == master_id:
+            if 'closed_dates' not in master:
+                master['closed_dates'] = []
+            master['closed_dates'].append({'date': date_str, 'reason': reason})
+            break
+
+    config_manager.config['staff'] = config['staff']
+
+    date_obj = datetime.fromisoformat(date_str).date()
+    date_display = date_obj.strftime('%d.%m.%Y')
+
+    await message.answer(f"✅ Дата {date_display} закрыта: <b>{reason}</b>")
+    await state.clear()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📅 К закрытым датам", callback_data=f"closed_dates_{master_id}")],
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+    ])
+    await message.answer("Выберите действие:", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("save_closed_no_reason_"))
+async def save_closed_no_reason(callback: CallbackQuery, state: FSMContext, config: dict, config_manager):
+    """Сохранить закрытую дату без причины"""
+
+    parts = callback.data.replace("save_closed_no_reason_", "").split("_", 1)
+    if len(parts) != 2:
+        await callback.answer("❌ Ошибка", show_alert=True)
+        return
+
+    master_id, date_str = parts
+
+    # Сохраняем
+    editor = get_config_editor(config)
+    editor.add_closed_date(master_id, date_str, "")
+
+    # Обновляем в памяти
+    for master in config.get('staff', {}).get('masters', []):
+        if master['id'] == master_id:
+            if 'closed_dates' not in master:
+                master['closed_dates'] = []
+            master['closed_dates'].append({'date': date_str, 'reason': ''})
+            break
+
+    config_manager.config['staff'] = config['staff']
+
+    date_obj = datetime.fromisoformat(date_str).date()
+    date_display = date_obj.strftime('%d.%m.%Y')
+
+    await callback.answer(f"✅ Дата {date_display} закрыта")
+    await state.clear()
+
+    # Возвращаемся к закрытым датам
+    await show_master_closed_dates(callback, config)
+
+
+@router.callback_query(F.data.startswith("remove_closed_list_"))
+async def remove_closed_list(callback: CallbackQuery, config: dict):
+    """Список закрытых дат для удаления"""
+
+    master_id = callback.data.replace("remove_closed_list_", "")
+
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m['id'] == master_id), None)
+
+    if not master:
+        await callback.answer("❌ Мастер не найден", show_alert=True)
+        return
+
+    closed_dates = master.get('closed_dates', [])
+
+    if not closed_dates:
+        await callback.answer("Нет закрытых дат для удаления", show_alert=True)
+        return
+
+    text = f"🗑 <b>УДАЛЕНИЕ ЗАКРЫТОЙ ДАТЫ: {master['name']}</b>\n\nВыберите дату для открытия:"
+
+    keyboard_rows = []
+    for cd in closed_dates:
+        date_obj = datetime.strptime(cd['date'], '%Y-%m-%d').date()
+        date_display = date_obj.strftime('%d.%m.%Y')
+        reason = cd.get('reason', '')
+        btn_text = f"🗑 {date_display}" + (f" ({reason})" if reason else "")
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=btn_text,
+                callback_data=f"remove_closed_{master_id}_{cd['date']}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"closed_dates_{master_id}")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("remove_closed_") & ~F.data.startswith("remove_closed_list_"))
+async def remove_closed_date(callback: CallbackQuery, config: dict, config_manager):
+    """Удалить закрытую дату"""
+
+    parts = callback.data.replace("remove_closed_", "").split("_", 1)
+    if len(parts) != 2:
+        await callback.answer("❌ Ошибка", show_alert=True)
+        return
+
+    master_id, date_str = parts
+
+    # Удаляем
+    editor = get_config_editor(config)
+    editor.remove_closed_date(master_id, date_str)
+
+    # Обновляем в памяти
+    for master in config.get('staff', {}).get('masters', []):
+        if master['id'] == master_id:
+            master['closed_dates'] = [
+                cd for cd in master.get('closed_dates', [])
+                if cd['date'] != date_str
+            ]
+            break
+
+    config_manager.config['staff'] = config['staff']
+
+    date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+    date_display = date_obj.strftime('%d.%m.%Y')
+
+    await callback.answer(f"✅ Дата {date_display} открыта")
+
+    # Возвращаемся к закрытым датам
+    await show_master_closed_dates(callback, config)

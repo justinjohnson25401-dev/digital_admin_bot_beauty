@@ -35,6 +35,7 @@ from utils.config_manager import ConfigManager
 
 # Импортируем admin handlers
 from admin_handlers import services_editor, settings_editor
+from admin_handlers import business_settings, texts_editor, notifications_editor, staff_editor
 
 # Настройка логирования
 import logging.handlers
@@ -192,7 +193,15 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="👥 Клиенты", callback_data="admin_clients")
         ],
         [
-            InlineKeyboardButton(text="⚙️ Настройки", callback_data="admin_settings")
+            InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="business_settings")
+        ],
+        [
+            InlineKeyboardButton(text="👤 Персонал", callback_data="staff_menu"),
+            InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")
+        ],
+        [
+            InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu"),
+            InlineKeyboardButton(text="⚙️ Система", callback_data="admin_settings")
         ],
         [
             InlineKeyboardButton(text="❓ Помощь", callback_data="admin_help")
@@ -953,6 +962,10 @@ async def main():
     # Подключаем роутеры для редактирования
     dp.include_router(services_editor.router)
     dp.include_router(settings_editor.router)
+    dp.include_router(business_settings.router)
+    dp.include_router(texts_editor.router)
+    dp.include_router(notifications_editor.router)
+    dp.include_router(staff_editor.router)
     
     # Регистрируем handlers
     dp.message.register(cmd_start_with_pin, Command("start"))
