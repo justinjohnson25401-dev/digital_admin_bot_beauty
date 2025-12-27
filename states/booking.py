@@ -3,7 +3,9 @@ from aiogram.fsm.state import State, StatesGroup
 
 class BookingState(StatesGroup):
     """Состояния для процесса создания записи"""
-    choosing_service = State()
+    choosing_category = State()  # Выбор категории услуг
+    choosing_service = State()   # Выбор услуги
+    choosing_master = State()    # Выбор мастера (если staff.enabled)
     choosing_date = State()
     choosing_time = State()
     input_name = State()
@@ -12,7 +14,7 @@ class BookingState(StatesGroup):
     waiting_comment_choice = State()
     input_comment = State()
     confirmation = State()
-    
+
     # Состояния для редактирования при подтверждении
     edit_service = State()
     edit_date = State()
@@ -20,6 +22,7 @@ class BookingState(StatesGroup):
     edit_name = State()
     edit_phone = State()
     edit_comment = State()
+    edit_master = State()  # Редактирование мастера
 
 
 class EditBookingState(StatesGroup):
@@ -28,4 +31,5 @@ class EditBookingState(StatesGroup):
     choosing_date = State()
     choosing_time = State()
     choosing_service = State()
+    choosing_master = State()  # Изменение мастера
     confirmation = State()

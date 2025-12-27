@@ -7,7 +7,7 @@ from .privacy import safe_log_order_creation
 
 logger = logging.getLogger(__name__)
 
-LATEST_SCHEMA_VERSION = 2
+LATEST_SCHEMA_VERSION = 3
 
 # Белый список таблиц для защиты от SQL injection
 ALLOWED_TABLES = {'orders', 'users', 'schema_migrations'}
@@ -159,6 +159,23 @@ class DBManager:
             self._set_schema_version(cursor, 2)
 
         current_version = self._get_schema_version(cursor)
+        if current_version < 3:
+            # Добавление колонки master_id для поддержки персонала
+            if not self._column_exists(cursor, 'orders', 'master_id'):
+                cursor.execute("ALTER TABLE orders ADD COLUMN master_id TEXT")
+                logger.info("Added master_id column to orders table")
+
+            # Индекс для поиска по мастеру
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_orders_master_id
+                ON orders(master_id, booking_date, booking_time)
+                """
+            )
+
+            self._set_schema_version(cursor, 3)
+
+        current_version = self._get_schema_version(cursor)
         if current_version < target_version:
             raise RuntimeError(
                 f"Database schema migration did not reach target version: {current_version} != {target_version}"
@@ -260,7 +277,8 @@ class DBManager:
 
     def add_order(self, user_id: int, service_id: str, service_name: str, price: int,
                   client_name: str, phone: str, comment: str = None,
-                  booking_date: str = None, booking_time: str = None) -> int:
+                  booking_date: str = None, booking_time: str = None,
+                  master_id: str = None) -> int:
         """Добавление заказа с защитой от race condition"""
         try:
             self._ensure_connection()
@@ -269,19 +287,27 @@ class DBManager:
 
             # Защита от race condition: проверяем доступность слота в транзакции
             if booking_date and booking_time:
-                cursor.execute("""
-                    SELECT COUNT(*) FROM orders
-                    WHERE booking_date = ? AND booking_time = ? AND status = 'active'
-                """, (booking_date, booking_time))
+                if master_id:
+                    # Если указан мастер, проверяем слот только для этого мастера
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM orders
+                        WHERE booking_date = ? AND booking_time = ? AND master_id = ? AND status = 'active'
+                    """, (booking_date, booking_time, master_id))
+                else:
+                    # Если мастер не указан, проверяем общую доступность
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM orders
+                        WHERE booking_date = ? AND booking_time = ? AND status = 'active'
+                    """, (booking_date, booking_time))
                 if cursor.fetchone()[0] > 0:
                     raise ValueError(f"Слот {booking_date} {booking_time} уже занят")
 
             cursor.execute("""
                 INSERT INTO orders (user_id, service_id, service_name, price, client_name, phone,
-                                   comment, booking_date, booking_time, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+                                   comment, booking_date, booking_time, master_id, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
             """, (user_id, service_id, service_name, price, client_name, phone,
-                  comment, booking_date, booking_time, created_at))
+                  comment, booking_date, booking_time, master_id, created_at))
 
             self.connection.commit()
             order_id = cursor.lastrowid
@@ -295,7 +321,8 @@ class DBManager:
                 booking_date=booking_date,
                 booking_time=booking_time
             )
-            logger.info(f"ID={order_id}, {log_msg}")
+            master_info = f", master_id={master_id}" if master_id else ""
+            logger.info(f"ID={order_id}, {log_msg}{master_info}")
 
             return order_id
 
@@ -306,15 +333,24 @@ class DBManager:
             logger.error(f"Error adding order: {e}")
             raise
 
-    def check_slot_availability(self, booking_date: str, booking_time: str) -> bool:
-        """Проверка доступности слота"""
+    def check_slot_availability(self, booking_date: str, booking_time: str, master_id: str = None) -> bool:
+        """Проверка доступности слота (опционально для конкретного мастера)"""
         try:
             self._ensure_connection()
             cursor = self.connection.cursor()
-            cursor.execute("""
-                SELECT COUNT(*) FROM orders
-                WHERE booking_date = ? AND booking_time = ? AND status = 'active'
-            """, (booking_date, booking_time))
+
+            if master_id:
+                # Проверка слота для конкретного мастера
+                cursor.execute("""
+                    SELECT COUNT(*) FROM orders
+                    WHERE booking_date = ? AND booking_time = ? AND master_id = ? AND status = 'active'
+                """, (booking_date, booking_time, master_id))
+            else:
+                # Общая проверка слота
+                cursor.execute("""
+                    SELECT COUNT(*) FROM orders
+                    WHERE booking_date = ? AND booking_time = ? AND status = 'active'
+                """, (booking_date, booking_time))
 
             count = cursor.fetchone()[0]
             return count == 0
@@ -322,6 +358,22 @@ class DBManager:
         except sqlite3.Error as e:
             logger.error(f"Error checking slot availability: {e}")
             return False
+
+    def get_occupied_slots_for_master(self, booking_date: str, master_id: str) -> list:
+        """Получить список занятых слотов мастера на дату"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT booking_time FROM orders
+                WHERE booking_date = ? AND master_id = ? AND status = 'active'
+            """, (booking_date, master_id))
+
+            return [row[0] for row in cursor.fetchall()]
+
+        except sqlite3.Error as e:
+            logger.error(f"Error getting occupied slots for master: {e}")
+            return []
 
     # НОВОЕ: Метод для проверки доступности слота, исключая указанный заказ (ошибка #4)
     def check_slot_availability_excluding(self, booking_date: str, booking_time: str, exclude_order_id: int) -> bool:
