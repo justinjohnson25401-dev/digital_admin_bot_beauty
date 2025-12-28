@@ -116,17 +116,36 @@ async def start_add_service(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(ServiceEditStates.add_name)
-async def process_add_name(message: Message, state: FSMContext):
+async def process_add_name(message: Message, state: FSMContext, config_manager):
     """Обработка названия новой услуги"""
     name = message.text.strip()
-    
+
+    # Удаляем сообщение пользователя для чистоты интерфейса
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
     if len(name) < 2:
         await message.answer("❌ Название слишком короткое. Введите минимум 2 символа:")
         return
-    
+
+    # Проверка на дубликат названия
+    config = config_manager.get_config()
+    existing_services = config.get('services', [])
+    name_lower = name.lower()
+
+    for svc in existing_services:
+        if svc.get('name', '').lower() == name_lower:
+            await message.answer(
+                f"❌ Услуга с названием «{svc['name']}» уже существует.\n\n"
+                "Введите другое название:"
+            )
+            return
+
     await state.update_data(name=name)
     await state.set_state(ServiceEditStates.add_price)
-    
+
     await message.answer(
         f"✅ Название: {name}\n\n"
         "Шаг 2 из 3\n\n"
@@ -137,6 +156,12 @@ async def process_add_name(message: Message, state: FSMContext):
 @router.message(ServiceEditStates.add_price)
 async def process_add_price(message: Message, state: FSMContext):
     """Обработка цены новой услуги"""
+    # Удаляем сообщение пользователя для чистоты интерфейса
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
     try:
         price = int(message.text.strip())
         if price <= 0:
@@ -144,7 +169,7 @@ async def process_add_price(message: Message, state: FSMContext):
     except:
         await message.answer("❌ Неверный формат. Введите положительное число (например: 1200):")
         return
-    
+
     await state.update_data(price=price)
     await state.set_state(ServiceEditStates.add_duration)
     
@@ -216,6 +241,12 @@ async def process_add_duration(callback: CallbackQuery, state: FSMContext, confi
 @router.message(ServiceEditStates.add_duration)
 async def process_add_duration_custom(message: Message, state: FSMContext, config_manager):
     """Обработка пользовательской длительности"""
+    # Удаляем сообщение пользователя для чистоты интерфейса
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
     try:
         duration = int(message.text.strip())
         if duration < 15 or duration > 240:
@@ -306,11 +337,17 @@ async def choose_edit_field(callback: CallbackQuery, state: FSMContext):
 async def process_edit_name(message: Message, state: FSMContext, config_manager):
     """Обработка нового названия"""
     new_name = message.text.strip()
-    
+
+    # Удаляем сообщение пользователя для чистоты интерфейса
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
     if len(new_name) < 2:
         await message.answer("❌ Название слишком короткое")
         return
-    
+
     data = await state.get_data()
     service_id = data['editing_service_id']
     
@@ -348,6 +385,12 @@ async def process_edit_name(message: Message, state: FSMContext, config_manager)
 @router.message(ServiceEditStates.edit_price)
 async def process_edit_price(message: Message, state: FSMContext, config_manager):
     """Обработка новой цены"""
+    # Удаляем сообщение пользователя для чистоты интерфейса
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
     try:
         new_price = int(message.text.strip())
         if new_price <= 0:
@@ -355,7 +398,7 @@ async def process_edit_price(message: Message, state: FSMContext, config_manager
     except:
         await message.answer("❌ Неверный формат. Введите положительное число:")
         return
-    
+
     data = await state.get_data()
     service_id = data['editing_service_id']
     

@@ -793,12 +793,30 @@ async def admin_export_csv_handler(callback, config: dict, db_manager):
     try:
         csv_data = db_manager.get_orders_csv(days=30)
         filename = f"orders_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        
+
         document = BufferedInputFile(csv_data, filename=filename)
         await callback.message.answer_document(
             document,
             caption="📥 Заказы за последние 30 дней"
         )
+
+        # Удаляем сообщение с кнопкой экспорта для чистоты интерфейса
+        try:
+            await callback.message.delete()
+        except Exception:
+            # Если не удалось удалить, редактируем текст и убираем кнопки
+            try:
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 К записям", callback_data="admin_orders")],
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="admin_main")]
+                ])
+                await callback.message.edit_text(
+                    "✅ CSV файл отправлен выше 👆",
+                    reply_markup=keyboard
+                )
+            except Exception:
+                pass
+
         await callback.answer("✅ Файл отправлен")
     except Exception as e:
         logger.error(f"Error exporting CSV: {e}")

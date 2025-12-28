@@ -95,9 +95,9 @@ def generate_dates_keyboard(back_callback: str = "back_to_masters") -> InlineKey
 def generate_time_slots_keyboard(config: dict, db_manager, booking_date: str,
                                   master_id: str = None, exclude_order_id: int = None) -> InlineKeyboardMarkup:
     buttons = []
-    work_start = config.get('booking', {}).get('work_start', 10)
-    work_end = config.get('booking', {}).get('work_end', 20)
-    slot_duration = config.get('booking', {}).get('slot_duration', 60)
+    work_start = int(config.get('booking', {}).get('work_start', 10))
+    work_end = int(config.get('booking', {}).get('work_end', 20))
+    slot_duration = int(config.get('booking', {}).get('slot_duration', 60))
 
     current_time = datetime.now()
     selected_date = datetime.fromisoformat(booking_date).date()
@@ -323,7 +323,7 @@ async def service_selected(callback: CallbackQuery, state: FSMContext, config: d
         # Показываем выбор мастера
         buttons = []
         for master in masters:
-            spec = master.get('specialization', '')
+            spec = master.get('specialization') or master.get('role', '')
             spec_text = f" ({spec})" if spec else ""
             buttons.append([InlineKeyboardButton(
                 text=f"👤 {master['name']}{spec_text}",
@@ -414,7 +414,7 @@ async def back_to_masters(callback: CallbackQuery, state: FSMContext, config: di
 
     buttons = []
     for master in masters:
-        spec = master.get('specialization', '')
+        spec = master.get('specialization') or master.get('role', '')
         spec_text = f" ({spec})" if spec else ""
         buttons.append([InlineKeyboardButton(
             text=f"👤 {master['name']}{spec_text}",

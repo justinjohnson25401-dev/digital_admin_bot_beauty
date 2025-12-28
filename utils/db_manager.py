@@ -393,6 +393,29 @@ class DBManager:
             logger.error(f"Error checking slot availability excluding order: {e}")
             return False
 
+    def check_slot_availability_for_master(self, booking_date: str, booking_time: str, master_id: str) -> bool:
+        """Проверка доступности слота для конкретного мастера (алиас)"""
+        return self.check_slot_availability(booking_date, booking_time, master_id)
+
+    def check_slot_availability_for_master_excluding(self, booking_date: str, booking_time: str,
+                                                      master_id: str, exclude_order_id: int) -> bool:
+        """Проверка доступности слота для мастера, исключая указанный заказ"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) FROM orders
+                WHERE booking_date = ? AND booking_time = ? AND master_id = ?
+                      AND status = 'active' AND id != ?
+            """, (booking_date, booking_time, master_id, exclude_order_id))
+
+            count = cursor.fetchone()[0]
+            return count == 0
+
+        except sqlite3.Error as e:
+            logger.error(f"Error checking slot availability for master excluding order: {e}")
+            return False
+
     # ИЗМЕНЕНО: Добавлена поддержка параметра active_only и master_id
     def get_user_bookings(self, user_id: int, active_only: bool = True) -> list:
         """Получение списка записей пользователя"""

@@ -42,7 +42,7 @@ async def show_staff_menu(callback: CallbackQuery, config: dict):
         text += f"Текущий состав ({len(masters)}):\n\n"
         for master in masters:
             services_count = len(master.get('services', []))
-            text += f"👤 <b>{master['name']}</b> — {master.get('role', 'Мастер')}\n"
+            text += f"👤 <b>{master['name']}</b> — {master.get('specialization') or master.get('role', 'Мастер')}\n"
             text += f"   📋 Услуг: {services_count}\n\n"
     else:
         text += "<i>Мастера не добавлены</i>\n\n"
@@ -296,7 +296,8 @@ async def apply_schedule_template(callback: CallbackQuery, state: FSMContext, co
 
     master_data = {
         "name": data['master_name'],
-        "role": data['master_role'],
+        "specialization": data['master_role'],  # Основное поле
+        "role": data['master_role'],  # Для обратной совместимости
         "photo_url": None,
         "services": data['selected_services'],
         "schedule": schedule,
@@ -357,7 +358,7 @@ async def edit_master_list(callback: CallbackQuery, config: dict):
     for master in masters:
         keyboard_rows.append([
             InlineKeyboardButton(
-                text=f"👤 {master['name']} — {master.get('role', 'Мастер')}",
+                text=f"👤 {master['name']} — {master.get('specialization') or master.get('role', 'Мастер')}",
                 callback_data=f"edit_master_{master['id']}"
             )
         ])
@@ -391,7 +392,7 @@ async def edit_master_show(callback: CallbackQuery, config: dict):
 ✏️ <b>РЕДАКТИРОВАНИЕ: {master['name']}</b>
 
 👤 <b>Имя:</b> {master['name']}
-💼 <b>Должность:</b> {master.get('role', 'Не указана')}
+💼 <b>Должность:</b> {master.get('specialization') or master.get('role', 'Не указана')}
 📋 <b>Услуги:</b> {', '.join(services_names) if services_names else 'Не выбраны'}
 📅 <b>График:</b> {schedule_summary}
 
@@ -502,13 +503,14 @@ async def edit_master_role_save(message: Message, state: FSMContext, config: dic
         await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
         return
 
-    # Сохраняем
+    # Сохраняем оба поля для совместимости
     editor = get_config_editor(config)
-    editor.update_master(master_id, {'role': new_role})
+    editor.update_master(master_id, {'specialization': new_role, 'role': new_role})
 
     # Обновляем в памяти
     for master in config.get('staff', {}).get('masters', []):
         if master['id'] == master_id:
+            master['specialization'] = new_role
             master['role'] = new_role
             break
 
@@ -603,7 +605,7 @@ async def delete_master_list(callback: CallbackQuery, config: dict):
     for master in masters:
         keyboard_rows.append([
             InlineKeyboardButton(
-                text=f"🗑 {master['name']} — {master.get('role', 'Мастер')}",
+                text=f"🗑 {master['name']} — {master.get('specialization') or master.get('role', 'Мастер')}",
                 callback_data=f"delete_master_{master['id']}"
             )
         ])
@@ -635,7 +637,7 @@ async def delete_master_confirm(callback: CallbackQuery, config: dict):
 Вы уверены, что хотите удалить мастера?
 
 👤 <b>{master['name']}</b>
-💼 {master.get('role', 'Мастер')}
+💼 {master.get('specialization') or master.get('role', 'Мастер')}
 
 <i>Это действие нельзя отменить!</i>
 """
