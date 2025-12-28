@@ -740,8 +740,8 @@ async def delete_master_list(callback: CallbackQuery, config: dict):
 
 
 @router.callback_query(F.data.startswith("delete_master_") & ~F.data.startswith("delete_master_list"))
-async def delete_master_confirm(callback: CallbackQuery, config: dict):
-    """Подтверждение удаления мастера"""
+async def delete_master_confirm(callback: CallbackQuery, config: dict, db_manager):
+    """Подтверждение удаления мастера с проверкой активных записей"""
 
     master_id = callback.data.replace("delete_master_", "")
 
@@ -752,6 +752,23 @@ async def delete_master_confirm(callback: CallbackQuery, config: dict):
         await callback.answer("❌ Мастер не найден", show_alert=True)
         return
 
+    # НОВОЕ: Проверяем активные записи у мастера
+    active_orders_count = 0
+    try:
+        cursor = db_manager.connection.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM orders
+            WHERE master_id = ? AND status = 'active'
+            AND (booking_date IS NULL OR booking_date >= date('now'))
+        """, (master_id,))
+        active_orders_count = cursor.fetchone()[0]
+    except Exception as e:
+        logger.error(f"Error checking active orders for master {master_id}: {e}")
+
+    warning_text = ""
+    if active_orders_count > 0:
+        warning_text = f"\n⚠️ <b>ВНИМАНИЕ:</b> У мастера {active_orders_count} активных записей!\nОни останутся в системе, но мастер не будет отображаться.\n"
+
     text = f"""
 ⚠️ <b>УДАЛЕНИЕ МАСТЕРА</b>
 
@@ -759,7 +776,7 @@ async def delete_master_confirm(callback: CallbackQuery, config: dict):
 
 👤 <b>{master['name']}</b>
 💼 {master.get('specialization') or master.get('role', 'Мастер')}
-
+{warning_text}
 <i>Это действие нельзя отменить!</i>
 """
 
@@ -776,7 +793,7 @@ async def delete_master_confirm(callback: CallbackQuery, config: dict):
 
 @router.callback_query(F.data.startswith("confirm_delete_master_"))
 async def delete_master_execute(callback: CallbackQuery, config: dict, config_manager):
-    """Выполнить удаление мастера"""
+    """Выполнить удаление мастера с обработкой ошибок"""
 
     master_id = callback.data.replace("confirm_delete_master_", "")
 
@@ -785,15 +802,29 @@ async def delete_master_execute(callback: CallbackQuery, config: dict, config_ma
     master = next((m for m in masters if m['id'] == master_id), None)
     master_name = master['name'] if master else 'Неизвестный'
 
-    # Удаляем
-    editor = get_config_editor(config)
-    editor.delete_master(master_id)
+    try:
+        # Удаляем из конфига
+        editor = get_config_editor(config)
+        success = editor.delete_master(master_id)
 
-    # Обновляем в памяти
-    config['staff']['masters'] = [m for m in masters if m['id'] != master_id]
-    config_manager.config['staff'] = config['staff']
+        if not success:
+            await callback.answer("❌ Не удалось удалить мастера", show_alert=True)
+            return
 
-    await callback.answer(f"✅ Мастер \"{master_name}\" удалён!")
+        # Обновляем в памяти
+        config['staff']['masters'] = [m for m in masters if m['id'] != master_id]
+        config_manager.config['staff'] = config['staff']
+
+        await callback.answer(f"✅ Мастер \"{master_name}\" удалён!")
+        logger.info(f"Master {master_id} ({master_name}) deleted by admin {callback.from_user.id}")
+
+    except Exception as e:
+        logger.error(f"Error deleting master {master_id}: {e}")
+        await callback.answer(
+            f"❌ Ошибка при удалении мастера: {str(e)[:50]}",
+            show_alert=True
+        )
+        return
 
     await show_staff_menu(callback, config)
 

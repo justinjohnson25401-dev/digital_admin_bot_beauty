@@ -265,3 +265,51 @@ python -m py_compile main.py handlers/*.py admin_bot/main.py admin_handlers/*.py
 - [ ] beauty_salon.json не содержит placeholder-ссылок telegram
 - [ ] mini_studio.json не содержит placeholder-ссылок telegram
 - [ ] solo_master.json не содержит placeholder-ссылок telegram
+
+---
+
+## 12. Исправления из повторного тестирования (v2.2)
+
+### P0 — Критические блокеры (исправлено)
+| # | Проблема | Причина | Решение | Файлы |
+|---|----------|---------|---------|-------|
+| P0-1 | Бот зависал при выборе даты (бесконечный цикл) | `slot_duration // 60` = 0 при duration < 60 мин | Переход на минутную арифметику вместо часовой | handlers/booking.py |
+| P0-2 | Удаление мастера без обработки ошибок | Отсутствовал try/except, не было предупреждения об активных записях | Добавлена проверка активных записей + try/except | admin_handlers/staff_editor.py |
+
+### Детали исправления P0-1
+
+**Было (ошибочный код):**
+```python
+current_slot = work_start  # 10 (часов)
+while current_slot < work_end:
+    slot_time = f"{current_slot:02d}:00"
+    # ...
+    current_slot += slot_duration // 60  # 30 // 60 = 0 → бесконечный цикл!
+```
+
+**Стало (исправленный код):**
+```python
+start_minutes = work_start * 60  # 600 минут (10:00)
+end_minutes = work_end * 60      # 1260 минут (21:00)
+current_minutes = start_minutes
+
+while current_minutes < end_minutes:
+    hour = current_minutes // 60
+    minute = current_minutes % 60
+    slot_time = f"{hour:02d}:{minute:02d}"
+    # ...
+    current_minutes += slot_duration  # 600 + 30 = 630 → корректно!
+```
+
+### Новые тесты после исправления P0-1
+- [ ] Бот показывает слоты при slot_duration=30 мин (10:00, 10:30, 11:00...)
+- [ ] Бот показывает слоты при slot_duration=60 мин (10:00, 11:00, 12:00...)
+- [ ] Бот показывает слоты при slot_duration=15 мин
+- [ ] При выборе даты бот НЕ зависает
+- [ ] После выбора даты появляется выбор времени
+
+### Новые тесты после исправления P0-2
+- [ ] При удалении мастера с активными записями показывается предупреждение
+- [ ] При ошибке удаления пользователь видит сообщение об ошибке (не тишину)
+- [ ] Удаление мастера без активных записей работает корректно
+- [ ] После успешного удаления показывается меню персонала
