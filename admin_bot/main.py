@@ -24,7 +24,7 @@ from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, StateFilter
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile, TelegramObject
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile, TelegramObject, ReplyKeyboardMarkup, KeyboardButton
 from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -181,6 +181,18 @@ class ConfigMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 
+def get_admin_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Постоянная клавиатура админ-панели"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="📅 Заказы")],
+            [KeyboardButton(text="💼 Услуги"), KeyboardButton(text="👤 Персонал")],
+            [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="❓ Помощь")]
+        ],
+        resize_keyboard=True
+    )
+
+
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     """Главное меню админ-панели"""
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -212,10 +224,10 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
 async def cmd_start(message: Message, config: dict, db_manager):
     """Команда /start для админов"""
     business_name = config.get('business_name', 'Ваш бизнес')
-    
+
     # Получаем статистику
     stats = db_manager.get_stats('today')
-    
+
     text = (
         f"🎯 <b>Админ-панель \"{business_name}\"</b>\n\n"
         f"📅 Сегодня:\n"
@@ -224,7 +236,10 @@ async def cmd_start(message: Message, config: dict, db_manager):
         f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
         "Выберите действие:"
     )
-    
+
+    # Показываем постоянную клавиатуру
+    await message.answer("📋 Меню:", reply_markup=get_admin_reply_keyboard())
+
     keyboard = get_main_menu_keyboard()
     await message.answer(text, reply_markup=keyboard)
 
@@ -890,13 +905,16 @@ async def admin_help_handler(callback):
     """Обработчик помощи"""
     text = (
         "❓ <b>Помощь</b>\n\n"
-        "<b>Доступные команды:</b>\n"
-        "/start — Главное меню\n"
-        "/stats — Статистика\n"
-        "/orders — Заказы\n"
-        "/clients — Клиенты\n\n"
+        "<b>Кнопки меню:</b>\n"
+        "📊 Статистика — просмотр статистики\n"
+        "📅 Заказы — управление записями\n"
+        "💼 Услуги — редактирование услуг\n"
+        "👤 Персонал — управление мастерами\n"
+        "⚙️ Настройки — настройки бизнеса\n\n"
+        "<b>Команды:</b>\n"
+        "/start — Главное меню\n\n"
         "<b>Навигация:</b>\n"
-        "Используйте кнопки для быстрого доступа к разделам.\n\n"
+        "Используйте кнопки внизу экрана или inline-меню для доступа к разделам.\n\n"
         "По вопросам обращайтесь к разработчику."
     )
     
@@ -985,9 +1003,137 @@ async def main():
     dp.include_router(notifications_editor.router)
     dp.include_router(staff_editor.router)
     
+    # Обработчики кнопок постоянного меню
+    async def reply_stats_handler(message: Message, config: dict, db_manager):
+        """Обработчик кнопки Статистика"""
+        from datetime import datetime
+
+        stats_today = db_manager.get_stats('today')
+        stats_week = db_manager.get_stats('week')
+        stats_month = db_manager.get_stats('month')
+
+        text = (
+            f"📊 <b>Статистика</b>\n\n"
+            f"📅 Сегодня ({datetime.now().strftime('%d.%m.%Y')}):\n"
+            f"├ Заказов: {stats_today['total_orders']}\n"
+            f"└ Выручка: {stats_today['total_revenue']}₽\n\n"
+            f"📅 Эта неделя:\n"
+            f"├ Заказов: {stats_week['total_orders']}\n"
+            f"└ Выручка: {stats_week['total_revenue']}₽\n\n"
+            f"📅 Этот месяц:\n"
+            f"├ Заказов: {stats_month['total_orders']}\n"
+            f"└ Выручка: {stats_month['total_revenue']}₽"
+        )
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
+        ])
+
+        await message.answer(text, reply_markup=keyboard)
+
+    async def reply_orders_handler(message: Message, config: dict, db_manager):
+        """Обработчик кнопки Заказы"""
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📅 Сегодня", callback_data="admin_orders"),
+                InlineKeyboardButton(text="📅 Завтра", callback_data="admin_orders_tomorrow"),
+            ],
+            [
+                InlineKeyboardButton(text="📅 Эта неделя", callback_data="admin_orders_week"),
+                InlineKeyboardButton(text="📆 Все будущие", callback_data="admin_orders_all_future"),
+            ],
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+        ])
+        await message.answer("📋 <b>Выберите период:</b>", reply_markup=keyboard)
+
+    async def reply_services_handler(message: Message, config_manager):
+        """Обработчик кнопки Услуги"""
+        from admin_handlers.services_editor import get_services_keyboard
+        config = config_manager.get_config()
+        services = config.get('services', [])
+
+        text = f"📋 <b>Услуги ({len(services)})</b>\n\n"
+        text += "Выберите услугу для редактирования или добавьте новую:"
+
+        keyboard = get_services_keyboard(services)
+        await message.answer(text, reply_markup=keyboard)
+
+    async def reply_staff_handler(message: Message, config: dict):
+        """Обработчик кнопки Персонал"""
+        staff_data = config.get('staff', {})
+        is_enabled = staff_data.get('enabled', False)
+        masters = staff_data.get('masters', [])
+
+        status = "✅ Включена" if is_enabled else "❌ Отключена"
+
+        text = f"👤 <b>УПРАВЛЕНИЕ ПЕРСОНАЛОМ</b>\n\nФункция персонала: <b>{status}</b>\n\n"
+
+        if masters:
+            text += f"Текущий состав ({len(masters)}):\n\n"
+            for master in masters:
+                services_count = len(master.get('services', []))
+                text += f"👤 <b>{master['name']}</b> — {master.get('specialization') or master.get('role', 'Мастер')}\n"
+                text += f"   📋 Услуг: {services_count}\n\n"
+        else:
+            text += "<i>Мастера не добавлены</i>\n\n"
+
+        toggle_text = "🔴 Выключить персонал" if is_enabled else "🟢 Включить персонал"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=toggle_text, callback_data="toggle_staff")],
+            [InlineKeyboardButton(text="➕ Добавить мастера", callback_data="add_master")],
+            [InlineKeyboardButton(text="✏️ Редактировать мастера", callback_data="edit_master_list")],
+            [InlineKeyboardButton(text="📅 Закрытые даты", callback_data="closed_dates_menu")],
+            [InlineKeyboardButton(text="🗑 Удалить мастера", callback_data="delete_master_list")],
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+        ])
+
+        await message.answer(text, reply_markup=keyboard)
+
+    async def reply_settings_handler(message: Message, config: dict):
+        """Обработчик кнопки Настройки"""
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="business_settings")],
+            [InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")],
+            [InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu")],
+            [InlineKeyboardButton(text="⚙️ Система", callback_data="admin_settings")],
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+        ])
+        await message.answer("⚙️ <b>Настройки</b>\n\nВыберите раздел:", reply_markup=keyboard)
+
+    async def reply_help_handler(message: Message):
+        """Обработчик кнопки Помощь"""
+        text = (
+            "❓ <b>Помощь</b>\n\n"
+            "<b>Кнопки меню:</b>\n"
+            "📊 Статистика — просмотр статистики\n"
+            "📅 Заказы — управление записями\n"
+            "💼 Услуги — редактирование услуг\n"
+            "👤 Персонал — управление мастерами\n"
+            "⚙️ Настройки — настройки бизнеса\n\n"
+            "<b>Команды:</b>\n"
+            "/start — Главное меню\n\n"
+            "По вопросам обращайтесь к разработчику."
+        )
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
+        ])
+
+        await message.answer(text, reply_markup=keyboard)
+
     # Регистрируем handlers
     dp.message.register(cmd_start_with_pin, Command("start"))
     dp.message.register(process_pin, AdminPinStates.waiting_pin)
+
+    # Обработчики кнопок постоянного меню
+    dp.message.register(reply_stats_handler, F.text == "📊 Статистика")
+    dp.message.register(reply_orders_handler, F.text == "📅 Заказы")
+    dp.message.register(reply_services_handler, F.text == "💼 Услуги")
+    dp.message.register(reply_staff_handler, F.text == "👤 Персонал")
+    dp.message.register(reply_settings_handler, F.text == "⚙️ Настройки")
+    dp.message.register(reply_help_handler, F.text == "❓ Помощь")
+
     dp.message.register(unknown_message, StateFilter(None), ~F.text.startswith("/"))
     
     # Callback handlers
