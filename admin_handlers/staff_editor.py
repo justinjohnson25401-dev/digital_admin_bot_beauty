@@ -286,40 +286,55 @@ async def services_selected(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("template_"), StaffEditorStates.choose_schedule_template)
 async def apply_schedule_template(callback: CallbackQuery, state: FSMContext, config: dict, config_manager):
-    """Применить шаблон графика и сохранить мастера"""
+    """Применить шаблон графика и сохранить мастера с обработкой ошибок"""
 
     template_id = callback.data.replace("template_", "")
 
-    schedule = StaffManager.create_default_schedule(template_id)
+    try:
+        schedule = StaffManager.create_default_schedule(template_id)
 
-    data = await state.get_data()
+        data = await state.get_data()
 
-    master_data = {
-        "name": data['master_name'],
-        "specialization": data['master_role'],  # Основное поле
-        "role": data['master_role'],  # Для обратной совместимости
-        "photo_url": None,
-        "services": data['selected_services'],
-        "schedule": schedule,
-        "closed_dates": []
-    }
+        # Проверяем наличие всех необходимых данных
+        if not data.get('master_name') or not data.get('master_role'):
+            await callback.answer("❌ Ошибка: данные мастера не найдены. Начните заново.", show_alert=True)
+            await state.clear()
+            return
 
-    # Сохраняем
-    editor = get_config_editor(config)
-    master_id = editor.add_master(master_data)
+        if not data.get('selected_services'):
+            await callback.answer("❌ Ошибка: услуги не выбраны. Начните заново.", show_alert=True)
+            await state.clear()
+            return
 
-    # Обновляем config в памяти
-    if 'staff' not in config:
-        config['staff'] = {'enabled': False, 'masters': []}
+        master_data = {
+            "name": data['master_name'],
+            "specialization": data['master_role'],  # Основное поле
+            "role": data['master_role'],  # Для обратной совместимости
+            "photo_url": None,
+            "services": data['selected_services'],
+            "schedule": schedule,
+            "closed_dates": []
+        }
 
-    master_data['id'] = master_id
-    config['staff']['masters'].append(master_data)
-    config_manager.config['staff'] = config['staff']
+        # Сохраняем с обработкой ошибок
+        editor = get_config_editor(config)
+        master_id = editor.add_master(master_data)
 
-    templates = StaffManager.get_schedule_templates()
-    schedule_desc = templates.get(template_id, template_id)
+        if not master_id:
+            raise ValueError("add_master вернул пустой ID")
 
-    text = f"""
+        # Обновляем config в памяти
+        if 'staff' not in config:
+            config['staff'] = {'enabled': False, 'masters': []}
+
+        master_data['id'] = master_id
+        config['staff']['masters'].append(master_data)
+        config_manager.config['staff'] = config['staff']
+
+        templates = StaffManager.get_schedule_templates()
+        schedule_desc = templates.get(template_id, template_id)
+
+        text = f"""
 ✅ <b>МАСТЕР ДОБАВЛЕН!</b>
 
 👤 <b>{data['master_name']}</b>
@@ -330,14 +345,31 @@ async def apply_schedule_template(callback: CallbackQuery, state: FSMContext, co
 <i>ID мастера: {master_id}</i>
 """
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
-    ])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+        ])
 
-    await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        logger.info(f"Master {master_id} ({data['master_name']}) added by admin {callback.from_user.id}")
+
+    except Exception as e:
+        logger.error(f"Error adding master: {e}", exc_info=True)
+
+        error_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="add_master")],
+            [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+        ])
+
+        await callback.message.edit_text(
+            f"❌ <b>Ошибка при добавлении мастера</b>\n\n"
+            f"Произошла системная ошибка. Пожалуйста, попробуйте ещё раз.\n\n"
+            f"<i>Техническая информация: {str(e)[:100]}</i>",
+            reply_markup=error_keyboard
+        )
+
     await state.clear()
-    await callback.answer("✅ Мастер добавлен!")
+    await callback.answer()
 
 
 # ==================== РЕДАКТИРОВАНИЕ МАСТЕРА ====================
