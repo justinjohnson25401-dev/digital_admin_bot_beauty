@@ -684,6 +684,39 @@ async def process_contact(message: Message, state: FSMContext, config: dict):
         await show_confirmation(message, state, config)
 
 
+@router.message(BookingState.choosing_phone_method, F.text)
+async def phone_direct_input(message: Message, state: FSMContext, config: dict):
+    """Прямой ввод телефона без нажатия 'Ввести вручную'"""
+    text = message.text.strip()
+
+    # Игнорируем кнопки меню
+    if text in ["✏️ Ввести вручную", "❌ Отменить", "📱 Отправить номер"]:
+        return
+
+    # Проверяем валидность номера
+    if not is_valid_phone(text):
+        await message.answer("Некорректный номер. Используйте кнопки или введите номер в формате +79991234567:")
+        return
+
+    # Обрабатываем номер
+    cleaned = clean_phone(text)
+    if cleaned.startswith('8'):
+        cleaned = '+7' + cleaned[1:]
+    elif cleaned.startswith('7'):
+        cleaned = '+' + cleaned
+    elif not cleaned.startswith('+'):
+        cleaned = '+7' + cleaned
+
+    await state.update_data(phone=cleaned)
+    await message.answer("✅ Телефон получен", reply_markup=ReplyKeyboardRemove())
+
+    if config.get('features', {}).get('ask_comment', True):
+        await message.answer("Хотите добавить комментарий?", reply_markup=get_comment_choice_keyboard())
+        await state.set_state(BookingState.waiting_comment_choice)
+    else:
+        await show_confirmation(message, state, config)
+
+
 @router.message(BookingState.input_phone, F.text)
 async def process_phone(message: Message, state: FSMContext, config: dict):
     phone = message.text.strip()

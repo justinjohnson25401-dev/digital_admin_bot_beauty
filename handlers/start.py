@@ -12,15 +12,25 @@ router = Router()
 
 
 def get_main_keyboard() -> ReplyKeyboardMarkup:
-    """Создание главной клавиатуры (5 кнопок по ТЗ)"""
+    """Создание главной клавиатуры с навигацией"""
     buttons = [
-        [KeyboardButton(text="📅 Записаться")],
-        [KeyboardButton(text="📋 Мои записи")],
-        [KeyboardButton(text="💅 Услуги и цены")],
         [
-            KeyboardButton(text="📍 Адрес"),
-            KeyboardButton(text="❓ FAQ")
+            KeyboardButton(text="🏠 Меню"),
+            KeyboardButton(text="◀️ Назад")
         ],
+        [
+            KeyboardButton(text="📅 Записаться"),
+            KeyboardButton(text="📋 Мои записи")
+        ],
+        [
+            KeyboardButton(text="💅 Услуги и цены"),
+            KeyboardButton(text="👩‍🎨 Мастера")
+        ],
+        [
+            KeyboardButton(text="🎁 Акции"),
+            KeyboardButton(text="ℹ️ О нас")
+        ],
+        [KeyboardButton(text="❓ FAQ")],
     ]
 
     return ReplyKeyboardMarkup(
@@ -45,10 +55,20 @@ async def cmd_start(message: Message, state: FSMContext, config: dict):
 
 
 @router.message(Command("menu"))
-@router.message(F.text == "🏠 Главное меню")
+@router.message(F.text.in_(["🏠 Меню", "🏠 Главное меню"]))
 async def cmd_menu(message: Message, state: FSMContext, config: dict):
+    """Возврат в главное меню"""
     await state.clear()
-    await message.answer("Главное меню:", reply_markup=get_main_keyboard())
+    business_name = config.get('business_name', 'наш бизнес')
+    await message.answer(f"🏠 Главное меню «{business_name}»", reply_markup=get_main_keyboard())
+
+
+@router.message(F.text == "◀️ Назад")
+async def cmd_back(message: Message, state: FSMContext, config: dict):
+    """Кнопка Назад - возврат в главное меню (упрощённая версия)"""
+    # В будущем можно добавить историю навигации в state
+    await state.clear()
+    await message.answer("🏠 Главное меню:", reply_markup=get_main_keyboard())
 
 
 @router.callback_query(F.data == "main_menu")
@@ -113,45 +133,245 @@ async def start_booking_from_services(callback: CallbackQuery, state: FSMContext
     await callback.answer()
 
 
-# ==================== АДРЕС И КОНТАКТЫ ====================
+# ==================== О НАС ====================
 
-@router.message(F.text == "📍 Адрес")
-async def show_address(message: Message, config: dict):
-    """Показ адреса и контактов"""
+@router.message(F.text.in_(["ℹ️ О нас", "📍 Адрес"]))
+async def show_about(message: Message, config: dict):
+    """Показ информации о компании"""
+    business_name = config.get('business_name', 'Наш бизнес')
+    about = config.get('about', {})
     contacts = config.get('contacts', {})
-    address = contacts.get('address') or config.get('address', 'Адрес не указан')
+
+    # Основная информация
+    text = f"ℹ️ <b>О НАС</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    text += f"✨ <b>{business_name}</b>\n\n"
+
+    # Описание (из about или default)
+    description = about.get('description', '')
+    if description:
+        text += f"{description}\n\n"
+
+    # Специализация
+    specialization = about.get('specialization', '')
+    if specialization:
+        text += f"💅 {specialization}\n\n"
+
+    # Достижения
+    achievements = about.get('achievements', '')
+    if achievements:
+        text += f"🏆 {achievements}\n\n"
+
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    # Адрес
+    address = contacts.get('address') or config.get('address', '')
+    if address:
+        text += f"📍 <b>Адрес:</b> {address}\n"
 
     # Рабочие часы
     booking = config.get('booking', {})
     work_start = int(booking.get('work_start', 10))
     work_end = int(booking.get('work_end', 20))
     timezone_city = config.get('timezone_city', '')
-
-    text = "📍 <b>КАК НАС НАЙТИ</b>\n"
-    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    text += f"🏠 <b>Адрес:</b>\n{address}\n\n"
-    text += f"🕐 <b>Режим работы:</b>\n"
-    text += f"Ежедневно: {work_start:02d}:00 – {work_end:02d}:00\n"
+    text += f"🕐 <b>Режим работы:</b> {work_start:02d}:00 – {work_end:02d}:00"
     if timezone_city:
-        text += f"<i>(время {timezone_city})</i>\n"
+        text += f" ({timezone_city})"
+    text += "\n"
 
-    # Дополнительные контакты если есть
+    # Контакты
     phone = contacts.get('phone')
     telegram = contacts.get('telegram')
+    instagram = contacts.get('instagram', '')
+    website = contacts.get('website', '')
 
-    if phone or telegram:
-        text += "\n📞 <b>Контакты:</b>\n"
-        if phone:
-            text += f"Телефон: {phone}\n"
-        if telegram:
-            text += f"Telegram: {telegram}\n"
+    if phone:
+        text += f"📞 <b>Телефон:</b> {phone}\n"
+    if telegram:
+        text += f"💬 <b>Telegram:</b> {telegram}\n"
+    if instagram:
+        text += f"📸 <b>Instagram:</b> {instagram}\n"
+    if website:
+        text += f"🌐 <b>Сайт:</b> {website}\n"
 
     text += "\n━━━━━━━━━━━━━━━━━━━━━━"
 
     await message.answer(text, parse_mode="HTML")
 
 
+# ==================== НАШИ МАСТЕРА ====================
+
+@router.message(F.text == "👩‍🎨 Мастера")
+async def show_masters_list(message: Message, config: dict):
+    """Показ списка мастеров"""
+    staff_config = config.get('staff', {})
+
+    if not staff_config.get('enabled', False):
+        await message.answer("Информация о мастерах пока не добавлена.")
+        return
+
+    masters = staff_config.get('masters', [])
+    if not masters:
+        await message.answer("Список мастеров пуст.")
+        return
+
+    text = "👩‍🎨 <b>НАШИ МАСТЕРА</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    text += "Выберите мастера, чтобы узнать подробнее:\n\n"
+
+    buttons = []
+    for master in masters:
+        master_name = master.get('name', 'Мастер')
+        master_id = master.get('id', '')
+        position = master.get('position', '')
+
+        btn_text = f"👤 {master_name}"
+        if position:
+            btn_text += f" — {position}"
+
+        buttons.append([InlineKeyboardButton(
+            text=btn_text,
+            callback_data=f"master_info:{master_id}"
+        )])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("master_info:"))
+async def show_master_profile(callback: CallbackQuery, config: dict):
+    """Показ профиля мастера"""
+    master_id = callback.data.replace("master_info:", "")
+
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m.get('id') == master_id), None)
+
+    if not master:
+        await callback.answer("Мастер не найден", show_alert=True)
+        return
+
+    name = master.get('name', 'Мастер')
+    position = master.get('position', '')
+    experience = master.get('experience', '')
+    specialization = master.get('specialization', '')
+    about = master.get('about', '')
+    services = master.get('services', [])
+
+    text = f"👤 <b>{name}</b>\n"
+    if position:
+        text += f"{position}\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    if experience:
+        text += f"⭐ <b>Опыт:</b> {experience}\n"
+    if specialization:
+        text += f"💅 <b>Специализация:</b> {specialization}\n"
+    if about:
+        text += f"\n📝 <b>О мастере:</b>\n{about}\n"
+    if services:
+        services_text = ", ".join(services) if isinstance(services, list) else services
+        text += f"\n🏷 <b>Услуги:</b> {services_text}\n"
+
+    text += "\n━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Кнопка записи к этому мастеру
+    buttons = [
+        [InlineKeyboardButton(text=f"📅 Записаться к {name.split()[0]}", callback_data=f"book_master:{master_id}")],
+        [InlineKeyboardButton(text="◀️ Все мастера", callback_data="masters_list")]
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "masters_list")
+async def callback_masters_list(callback: CallbackQuery, config: dict):
+    """Возврат к списку мастеров"""
+    staff_config = config.get('staff', {})
+    masters = staff_config.get('masters', [])
+
+    if not masters:
+        await callback.answer("Список мастеров пуст", show_alert=True)
+        return
+
+    text = "👩‍🎨 <b>НАШИ МАСТЕРА</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    text += "Выберите мастера, чтобы узнать подробнее:\n\n"
+
+    buttons = []
+    for master in masters:
+        master_name = master.get('name', 'Мастер')
+        master_id = master.get('id', '')
+        position = master.get('position', '')
+
+        btn_text = f"👤 {master_name}"
+        if position:
+            btn_text += f" — {position}"
+
+        buttons.append([InlineKeyboardButton(
+            text=btn_text,
+            callback_data=f"master_info:{master_id}"
+        )])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+# ==================== АКЦИИ ====================
+
+@router.message(F.text == "🎁 Акции")
+async def show_promotions(message: Message, config: dict):
+    """Показ текущих акций"""
+    promotions = config.get('promotions', [])
+
+    text = "🎁 <b>АКЦИИ И СПЕЦПРЕДЛОЖЕНИЯ</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    if not promotions:
+        text += "🔜 Скоро здесь появятся выгодные предложения!\n\n"
+        text += "Следите за обновлениями 😊"
+    else:
+        for promo in promotions:
+            if not promo.get('active', True):
+                continue
+
+            emoji = promo.get('emoji', '🎁')
+            title = promo.get('title', 'Акция')
+            description = promo.get('description', '')
+            valid_until = promo.get('valid_until', '')
+            is_permanent = promo.get('is_permanent', False)
+
+            text += f"{emoji} <b>{title}</b>\n"
+            if description:
+                text += f"   {description}\n"
+            if is_permanent:
+                text += "   <i>Действует: постоянно</i>\n"
+            elif valid_until:
+                text += f"   <i>Действует: до {valid_until}</i>\n"
+            text += "\n"
+
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    text += "📅 Для записи нажмите «Записаться»"
+
+    await message.answer(text, parse_mode="HTML")
+
+
 # ==================== FAQ ====================
+
+# Пункты FAQ, которые теперь в разделе "О нас"
+FAQ_SKIP_ITEMS = ['часы работы', 'контакты', 'режим работы', 'адрес']
+
+
+def get_developer_credit(config: dict) -> str:
+    """Получить кредит разработчика из конфига"""
+    dev_config = config.get('bot_settings', {}).get('developer_credit', {})
+    if dev_config.get('enabled', True):
+        contact = dev_config.get('contact', '@Oroani')
+        return f"\n━━━━━━━━━━━━━━━━━━━━━━\n🤖 {contact}"
+    return ""
+
 
 @router.message(F.text.in_(["❓ FAQ", "❓ Часто задаваемые вопросы"]))
 async def show_faq_menu(message: Message, config: dict):
@@ -159,22 +379,26 @@ async def show_faq_menu(message: Message, config: dict):
     faq_items = config.get('faq', [])
 
     if not faq_items:
-        await message.answer("FAQ пока не настроен.")
+        text = "❓ <b>ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ</b>\n\nFAQ пока не настроен."
+        text += get_developer_credit(config)
+        await message.answer(text, parse_mode="HTML")
         return
 
     buttons = []
     for idx, item in enumerate(faq_items):
-        btn_text = item.get('btn')
+        btn_text = item.get('btn', '')
         if not btn_text:
+            continue
+        # Пропускаем пункты, которые теперь в "О нас"
+        if any(skip in btn_text.lower() for skip in FAQ_SKIP_ITEMS):
             continue
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"faq:{idx}")])
 
-    # Добавляем кнопку возврата в главное меню
-    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
 
     text = "❓ <b>ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ</b>\n\nВыберите интересующий вас вопрос:"
+    text += get_developer_credit(config)
+
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
@@ -184,23 +408,27 @@ async def callback_faq_menu(callback: CallbackQuery, config: dict):
     faq_items = config.get('faq', [])
 
     if not faq_items:
-        await callback.message.edit_text("FAQ пока не настроен.")
+        text = "❓ <b>ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ</b>\n\nFAQ пока не настроен."
+        text += get_developer_credit(config)
+        await callback.message.edit_text(text, parse_mode="HTML")
         await callback.answer()
         return
 
     buttons = []
     for idx, item in enumerate(faq_items):
-        btn_text = item.get('btn')
+        btn_text = item.get('btn', '')
         if not btn_text:
+            continue
+        # Пропускаем пункты, которые теперь в "О нас"
+        if any(skip in btn_text.lower() for skip in FAQ_SKIP_ITEMS):
             continue
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"faq:{idx}")])
 
-    # Добавляем кнопку возврата в главное меню
-    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
 
     text = "❓ <b>ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ</b>\n\nВыберите интересующий вас вопрос:"
+    text += get_developer_credit(config)
+
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 

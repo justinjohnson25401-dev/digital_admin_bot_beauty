@@ -987,16 +987,26 @@ async def add_closed_date_start(callback: CallbackQuery, state: FSMContext):
 async def select_closed_date(callback: CallbackQuery, state: FSMContext):
     """Выбрана дата для закрытия"""
 
-    parts = callback.data.replace("select_closed_date_", "").split("_", 1)
+    # Используем rsplit для корректной обработки master_id с подчёркиваниями
+    # Формат: select_closed_date_{master_id}_{YYYY-MM-DD}
+    remaining = callback.data.replace("select_closed_date_", "")
+
+    # Разделяем справа по последнему подчёркиванию перед датой
+    parts = remaining.rsplit("_", 1)
     if len(parts) != 2:
-        await callback.answer("❌ Ошибка", show_alert=True)
+        await callback.answer("❌ Ошибка формата данных", show_alert=True)
         return
 
     master_id, date_str = parts
 
-    await state.update_data(closing_master_id=master_id, closing_date=date_str)
+    # Проверяем формат даты
+    try:
+        date_obj = datetime.fromisoformat(date_str).date()
+    except ValueError:
+        await callback.answer("❌ Некорректная дата", show_alert=True)
+        return
 
-    date_obj = datetime.fromisoformat(date_str).date()
+    await state.update_data(closing_master_id=master_id, closing_date=date_str)
     date_display = date_obj.strftime('%d.%m.%Y')
 
     text = f"""
