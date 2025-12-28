@@ -169,10 +169,40 @@ async def show_faq_menu(message: Message, config: dict):
             continue
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"faq:{idx}")])
 
+    # Добавляем кнопку возврата в главное меню
+    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     text = "❓ <b>ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ</b>\n\nВыберите интересующий вас вопрос:"
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "faq_menu")
+async def callback_faq_menu(callback: CallbackQuery, config: dict):
+    """Возврат к меню FAQ по нажатию inline-кнопки"""
+    faq_items = config.get('faq', [])
+
+    if not faq_items:
+        await callback.message.answer("FAQ пока не настроен.")
+        await callback.answer()
+        return
+
+    buttons = []
+    for idx, item in enumerate(faq_items):
+        btn_text = item.get('btn')
+        if not btn_text:
+            continue
+        buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"faq:{idx}")])
+
+    # Добавляем кнопку возврата в главное меню
+    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    text = "❓ <b>ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ</b>\n\nВыберите интересующий вас вопрос:"
+    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("faq:"))
@@ -225,7 +255,13 @@ async def handle_faq_callback(callback: CallbackQuery, config: dict):
         work_end = int(booking.get('work_end', 20))
         answer = f"🕐 <b>Мы работаем:</b>\nЕжедневно: {work_start:02d}:00 – {work_end:02d}:00"
 
-    await callback.message.answer(answer, parse_mode="HTML")
+    # Кнопки навигации после ответа FAQ
+    nav_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К списку вопросов", callback_data="faq_menu")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+    ])
+
+    await callback.message.answer(answer, reply_markup=nav_keyboard, parse_mode="HTML")
     await callback.answer()
 
 
