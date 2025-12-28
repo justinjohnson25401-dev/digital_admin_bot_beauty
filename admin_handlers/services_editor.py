@@ -130,6 +130,11 @@ async def process_add_name(message: Message, state: FSMContext, config_manager):
         await message.answer("❌ Название слишком короткое. Введите минимум 2 символа:")
         return
 
+    # Проверка на название только из цифр
+    if name.isdigit():
+        await message.answer("❌ Название услуги не может состоять только из цифр. Попробуйте снова:")
+        return
+
     # Проверка на дубликат названия
     config = config_manager.get_config()
     existing_services = config.get('services', [])
@@ -182,7 +187,8 @@ async def process_add_price(message: Message, state: FSMContext):
             InlineKeyboardButton(text="90 мин", callback_data="duration:90"),
             InlineKeyboardButton(text="120 мин", callback_data="duration:120")
         ],
-        [InlineKeyboardButton(text="Другое", callback_data="duration:custom")]
+        [InlineKeyboardButton(text="✏️ Свой вариант", callback_data="duration:custom")],
+        [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_services")]
     ])
     
     await message.answer(
@@ -199,7 +205,13 @@ async def process_add_duration(callback: CallbackQuery, state: FSMContext, confi
     duration_value = callback.data.split(":")[1]
     
     if duration_value == "custom":
-        await callback.message.edit_text("Введите длительность в минутах (число от 15 до 240):")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_duration_choice")]
+        ])
+        await callback.message.edit_text(
+            "Введите длительность в минутах (число от 1 до 180):",
+            reply_markup=keyboard
+        )
         # Состояние не меняем, ждём текстового сообщения
         await callback.answer()
         return
@@ -238,6 +250,33 @@ async def process_add_duration(callback: CallbackQuery, state: FSMContext, confi
     await callback.answer()
 
 
+@router.callback_query(ServiceEditStates.add_duration, F.data == "back_to_duration_choice")
+async def back_to_duration_choice(callback: CallbackQuery, state: FSMContext):
+    """Возврат к выбору длительности"""
+    data = await state.get_data()
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="30 мин", callback_data="duration:30"),
+            InlineKeyboardButton(text="60 мин", callback_data="duration:60")
+        ],
+        [
+            InlineKeyboardButton(text="90 мин", callback_data="duration:90"),
+            InlineKeyboardButton(text="120 мин", callback_data="duration:120")
+        ],
+        [InlineKeyboardButton(text="✏️ Свой вариант", callback_data="duration:custom")],
+        [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_services")]
+    ])
+
+    await callback.message.edit_text(
+        f"✅ Цена: {data.get('price')}₽\n\n"
+        "Шаг 3 из 3\n\n"
+        "Выберите длительность услуги:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
 @router.message(ServiceEditStates.add_duration)
 async def process_add_duration_custom(message: Message, state: FSMContext, config_manager):
     """Обработка пользовательской длительности"""
@@ -249,10 +288,10 @@ async def process_add_duration_custom(message: Message, state: FSMContext, confi
 
     try:
         duration = int(message.text.strip())
-        if duration < 15 or duration > 240:
+        if duration < 1 or duration > 180:
             raise ValueError
     except:
-        await message.answer("❌ Неверный формат. Введите число от 15 до 240:")
+        await message.answer("❌ Неверный формат. Введите число от 1 до 180:")
         return
     
     data = await state.get_data()
@@ -318,6 +357,8 @@ async def choose_edit_field(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text("Введите новую цену (только число):")
     elif field == "duration":
         await state.set_state(ServiceEditStates.edit_duration)
+        data = await state.get_data()
+        service_id = data.get('editing_service_id')
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="30 мин", callback_data="new_duration:30"),
@@ -326,7 +367,9 @@ async def choose_edit_field(callback: CallbackQuery, state: FSMContext):
             [
                 InlineKeyboardButton(text="90 мин", callback_data="new_duration:90"),
                 InlineKeyboardButton(text="120 мин", callback_data="new_duration:120")
-            ]
+            ],
+            [InlineKeyboardButton(text="✏️ Свой вариант", callback_data="new_duration:custom")],
+            [InlineKeyboardButton(text="🔙 Назад к услуге", callback_data=f"service_view:{service_id}")]
         ])
         await callback.message.edit_text("Выберите новую длительность:", reply_markup=keyboard)
     
@@ -436,7 +479,22 @@ async def process_edit_price(message: Message, state: FSMContext, config_manager
 @router.callback_query(ServiceEditStates.edit_duration, F.data.startswith("new_duration:"))
 async def process_edit_duration(callback: CallbackQuery, state: FSMContext, config_manager):
     """Обработка новой длительности"""
-    new_duration = int(callback.data.split(":")[1])
+    duration_value = callback.data.split(":")[1]
+
+    if duration_value == "custom":
+        data = await state.get_data()
+        service_id = data.get('editing_service_id')
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_edit_duration:{service_id}")]
+        ])
+        await callback.message.edit_text(
+            "Введите длительность в минутах (число от 1 до 180):",
+            reply_markup=keyboard
+        )
+        await callback.answer()
+        return
+
+    new_duration = int(duration_value)
     
     data = await state.get_data()
     service_id = data['editing_service_id']
@@ -471,6 +529,82 @@ async def process_edit_duration(callback: CallbackQuery, state: FSMContext, conf
     
     await state.clear()
     await callback.answer()
+
+
+@router.callback_query(ServiceEditStates.edit_duration, F.data.startswith("back_to_edit_duration:"))
+async def back_to_edit_duration(callback: CallbackQuery, state: FSMContext):
+    """Возврат к выбору длительности при редактировании"""
+    service_id = callback.data.split(":")[1]
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="30 мин", callback_data="new_duration:30"),
+            InlineKeyboardButton(text="60 мин", callback_data="new_duration:60")
+        ],
+        [
+            InlineKeyboardButton(text="90 мин", callback_data="new_duration:90"),
+            InlineKeyboardButton(text="120 мин", callback_data="new_duration:120")
+        ],
+        [InlineKeyboardButton(text="✏️ Свой вариант", callback_data="new_duration:custom")],
+        [InlineKeyboardButton(text="🔙 Назад к услуге", callback_data=f"service_view:{service_id}")]
+    ])
+    await callback.message.edit_text("Выберите новую длительность:", reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.message(ServiceEditStates.edit_duration)
+async def process_edit_duration_custom(message: Message, state: FSMContext, config_manager):
+    """Обработка пользовательской длительности при редактировании"""
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    try:
+        new_duration = int(message.text.strip())
+        if new_duration < 1 or new_duration > 180:
+            raise ValueError
+    except:
+        data = await state.get_data()
+        service_id = data.get('editing_service_id')
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_edit_duration:{service_id}")]
+        ])
+        await message.answer("❌ Неверный формат. Введите число от 1 до 180:", reply_markup=keyboard)
+        return
+
+    data = await state.get_data()
+    service_id = data['editing_service_id']
+
+    success = config_manager.update_service(service_id, duration=new_duration)
+
+    if success:
+        config = config_manager.reload_config()
+        services = config.get('services', [])
+        service = next((s for s in services if s.get('id') == service_id), None)
+        if service:
+            duration = service.get('duration', 60)
+            text = (
+                f"✅ Длительность изменена на: {new_duration} мин\n\n"
+                f"📋 <b>{service['name']}</b>\n\n"
+                f"💰 Цена: {service['price']}₽\n"
+                f"⏱ Длительность: {duration} мин\n"
+                f"🆔 ID: {service['id']}"
+            )
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✏️ Изменить", callback_data=f"service_edit:{service_id}"),
+                    InlineKeyboardButton(text="❌ Удалить", callback_data=f"service_delete:{service_id}")
+                ],
+                [InlineKeyboardButton(text="🔙 К списку услуг", callback_data="admin_services")]
+            ])
+            await message.answer(text, reply_markup=keyboard)
+        else:
+            await message.answer(f"✅ Длительность изменена на: {new_duration} мин")
+    else:
+        await message.answer("❌ Ошибка при сохранении")
+
+    await state.clear()
 
 
 # === УДАЛЕНИЕ УСЛУГИ ===

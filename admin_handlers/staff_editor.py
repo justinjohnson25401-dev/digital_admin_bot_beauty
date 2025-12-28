@@ -526,6 +526,127 @@ async def edit_master_role_save(message: Message, state: FSMContext, config: dic
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
 
+@router.callback_query(F.data.startswith("edit_master_services_"))
+async def edit_master_services_start(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Начать редактирование услуг мастера"""
+
+    master_id = callback.data.replace("edit_master_services_", "")
+
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m['id'] == master_id), None)
+
+    if not master:
+        await callback.answer("❌ Мастер не найден", show_alert=True)
+        return
+
+    services = config.get('services', [])
+    if not services:
+        await callback.answer("❌ В системе нет услуг", show_alert=True)
+        return
+
+    await state.update_data(editing_master_id=master_id, editing_services=list(master.get('services', [])))
+
+    current_services = master.get('services', [])
+
+    keyboard_rows = []
+    for service in services:
+        is_selected = service['id'] in current_services
+        mark = "☑" if is_selected else "☐"
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"{mark} {service['name']} ({service['price']}₽)",
+                callback_data=f"toggle_master_service_{service['id']}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="✅ Сохранить", callback_data="save_master_services")])
+    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_master_{master_id}")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    text = f"""
+✏️ <b>РЕДАКТИРОВАНИЕ УСЛУГ: {master['name']}</b>
+
+Выберите услуги, которые выполняет мастер.
+Нажимайте на услуги для выбора/отмены:
+"""
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.edit_services)
+    await callback.answer()
+
+
+@router.callback_query(StaffEditorStates.edit_services, F.data.startswith("toggle_master_service_"))
+async def toggle_master_service(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Переключить выбор услуги для мастера"""
+
+    service_id = callback.data.replace("toggle_master_service_", "")
+
+    data = await state.get_data()
+    selected = data.get('editing_services', [])
+    master_id = data.get('editing_master_id')
+
+    if service_id in selected:
+        selected.remove(service_id)
+    else:
+        selected.append(service_id)
+
+    await state.update_data(editing_services=selected)
+
+    # Обновляем клавиатуру
+    services = config.get('services', [])
+
+    keyboard_rows = []
+    for service in services:
+        is_selected = service['id'] in selected
+        mark = "☑" if is_selected else "☐"
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"{mark} {service['name']} ({service['price']}₽)",
+                callback_data=f"toggle_master_service_{service['id']}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="✅ Сохранить", callback_data="save_master_services")])
+    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_master_{master_id}")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(StaffEditorStates.edit_services, F.data == "save_master_services")
+async def save_master_services(callback: CallbackQuery, state: FSMContext, config: dict, config_manager):
+    """Сохранить изменённые услуги мастера"""
+
+    data = await state.get_data()
+    selected = data.get('editing_services', [])
+    master_id = data.get('editing_master_id')
+
+    if not selected:
+        await callback.answer("❌ Выберите хотя бы одну услугу", show_alert=True)
+        return
+
+    # Сохраняем
+    editor = get_config_editor(config)
+    editor.update_master(master_id, {'services': selected})
+
+    # Обновляем в памяти
+    for master in config.get('staff', {}).get('masters', []):
+        if master['id'] == master_id:
+            master['services'] = selected
+            break
+
+    config_manager.config['staff'] = config['staff']
+
+    await callback.answer(f"✅ Услуги обновлены ({len(selected)} шт.)")
+    await state.clear()
+
+    # Возвращаемся к мастеру
+    await edit_master_show(callback, config)
+
+
 @router.callback_query(F.data.startswith("edit_master_schedule_"))
 async def edit_master_schedule(callback: CallbackQuery, config: dict):
     """Изменить график мастера"""
