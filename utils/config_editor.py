@@ -12,12 +12,20 @@ from typing import Any, Dict, Optional, List
 
 logger = logging.getLogger(__name__)
 
+# Корневая директория проекта (parent of utils/)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "configs" / "client_lite.json"
+
 
 class ConfigEditor:
     """Расширенный класс для управления файлом configs/client_lite.json"""
 
-    def __init__(self, config_path: str = "configs/client_lite.json"):
-        self.config_path = Path(config_path)
+    def __init__(self, config_path: str = None):
+        # Используем абсолютный путь по умолчанию
+        if config_path is None:
+            self.config_path = DEFAULT_CONFIG_PATH
+        else:
+            self.config_path = Path(config_path)
 
     def load(self) -> Dict[str, Any]:
         """Загрузить конфиг из JSON файла"""
