@@ -2,6 +2,7 @@
 Управление персоналом - мастера, графики, закрытые даты.
 """
 
+import logging
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -11,6 +12,8 @@ from admin_bot.states import StaffEditorStates, ClosedDatesStates
 from utils.config_editor import ConfigEditor
 from utils.staff_manager import StaffManager
 from utils.validators import validate_master_name, validate_master_role, validate_date_format
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
