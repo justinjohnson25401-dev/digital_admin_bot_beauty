@@ -1,291 +1,279 @@
 #!/usr/bin/env python3
 """
-BOT-BUSINESS V2.0 - Интерактивный установщик
-Настройка бота для вашего бизнеса за 5 минут
+Установщик бота для салонов красоты
+Поддерживает 3 формата: соло-мастер, мини-студия, салон красоты
 """
 
 import os
-import json
 import sys
+import json
 import subprocess
 import re
-import hashlib
+
+TEMPLATES = {
+    "1": {
+        "name": "Соло-мастер",
+        "file": "templates/solo_master.json",
+        "desc": "Частный мастер (1-2 человека), без выбора мастера"
+    },
+    "2": {
+        "name": "Мини-студия",
+        "file": "templates/mini_studio.json",
+        "desc": "Студия на 3-5 мастеров с выбором специалиста"
+    },
+    "3": {
+        "name": "Салон красоты",
+        "file": "templates/beauty_salon.json",
+        "desc": "Полноценный салон на 5-8 мастеров"
+    }
+}
+
 
 def print_header():
-    """Красивый заголовок"""
-    print("\n" + "="*60)
-    print("   BOT-BUSINESS V2.0 — УСТАНОВЩИК")
-    print("="*60 + "\n")
-    print("Добро пожаловать! Сейчас мы настроим бота для вашего бизнеса.\n")
+    print("\n" + "=" * 55)
+    print("  🎀 УСТАНОВЩИК БОТА ДЛЯ САЛОНА КРАСОТЫ")
+    print("=" * 55 + "\n")
+
+
+def print_step(num, text):
+    print(f"\n📌 Шаг {num}: {text}")
+    print("-" * 45)
+
 
 def validate_token(token: str) -> bool:
     """Проверка формата Telegram Bot Token"""
-    pattern = r'^\d{8,10}:[A-Za-z0-9_-]{35}$'
-    return bool(re.match(pattern, token))
+    if len(token) < 20 or ":" not in token:
+        return False
+    return True
 
-def validate_telegram_id(user_id: str) -> bool:
-    """Проверка Telegram ID"""
-    return user_id.isdigit() and len(user_id) >= 5
 
-def validate_slug(slug: str) -> bool:
-    """Проверка slug (только латиница, цифры, подчеркивание)"""
-    pattern = r'^[a-z0-9_]+$'
-    return bool(re.match(pattern, slug))
-
-def input_with_validation(prompt: str, validator=None, required=True, default=None):
-    """Ввод с валидацией"""
+def get_input(prompt, default=None, validator=None):
+    """Получить ввод пользователя с поддержкой значения по умолчанию"""
     while True:
-        value = input(prompt).strip()
-        
-        # Если пустой и есть default
-        if not value and default:
-            return default
-        
-        # Если пустой и не обязательный
-        if not value and not required:
-            return None
-        
-        # Если пустой и обязательный
-        if not value and required:
+        if default:
+            result = input(f"{prompt} [{default}]: ").strip()
+            result = result if result else default
+        else:
+            result = input(f"{prompt}: ").strip()
+
+        if not result:
             print("❌ Это поле обязательное!")
             continue
-        
-        # Валидация
-        if validator:
-            if validator(value):
-                return value
-            else:
-                print("❌ Некорректный формат! Попробуйте еще раз.")
-        else:
-            return value
 
-def create_env_file(bot_token: str, admin_bot_token: str = None):
-    """Создание .env файла"""
-    content = f"# Токены ботов\nBOT_TOKEN={bot_token}\n"
-    
-    if admin_bot_token:
-        content += f"ADMIN_BOT_TOKEN={admin_bot_token}\n"
-    
+        if validator and not validator(result):
+            print("❌ Некорректный формат! Попробуйте ещё раз.")
+            continue
+
+        return result
+
+
+def choose_template():
+    """Выбор шаблона бизнеса"""
+    print_step(1, "Выберите формат вашего бизнеса")
+
+    for key, tmpl in TEMPLATES.items():
+        print(f"\n  [{key}] {tmpl['name']}")
+        print(f"      └─ {tmpl['desc']}")
+
+    print()
+    while True:
+        choice = input("Ваш выбор (1/2/3): ").strip()
+        if choice in TEMPLATES:
+            return TEMPLATES[choice]
+        print("❌ Введите 1, 2 или 3")
+
+
+def load_template(template_file):
+    """Загрузить шаблон конфигурации"""
+    if not os.path.exists(template_file):
+        print(f"❌ Файл шаблона не найден: {template_file}")
+        sys.exit(1)
+
+    with open(template_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    return data.get('config', data)
+
+
+def get_tokens():
+    """Получить токены ботов"""
+    print_step(2, "Введите токены Telegram ботов")
+
+    print("\n💡 Получить токен можно у @BotFather в Telegram")
+    print("   1. Откройте @BotFather → /newbot")
+    print("   2. Введите имя и username бота")
+    print("   3. Скопируйте полученный токен\n")
+
+    bot_token = get_input(
+        "BOT_TOKEN (основной бот)",
+        validator=validate_token
+    )
+
+    admin_token = get_input(
+        "ADMIN_BOT_TOKEN (админ-панель)",
+        validator=validate_token
+    )
+
+    return bot_token, admin_token
+
+
+def get_admin_id():
+    """Получить Telegram ID администратора"""
+    print_step(3, "Введите ваш Telegram ID")
+
+    print("\n💡 Узнать свой ID можно у бота @userinfobot")
+    print("   Просто напишите ему /start\n")
+
+    while True:
+        admin_id = get_input("Ваш Telegram ID")
+        if admin_id.isdigit() and len(admin_id) >= 5:
+            return int(admin_id)
+        print("❌ ID должен быть числом (например: 123456789)")
+
+
+def get_business_name(default_name):
+    """Получить название бизнеса"""
+    print_step(4, "Название вашего бизнеса")
+    return get_input("Название", default_name)
+
+
+def create_env_file(bot_token, admin_token):
+    """Создать .env файл"""
+    env_content = f"""# Токены ботов
+BOT_TOKEN={bot_token}
+ADMIN_BOT_TOKEN={admin_token}
+
+# Настройки логирования
+LOG_LEVEL=INFO
+"""
+
     with open('.env', 'w', encoding='utf-8') as f:
-        f.write(content)
-    
-    print("✅ Файл .env создан")
+        f.write(env_content)
 
-def create_config_file(data: dict):
-    """Создание configs/client_lite.json"""
+    print("✅ Создан файл .env")
+
+
+def create_config(config, business_name, admin_id, slug):
+    """Создать конфигурационный файл"""
+    config['business_name'] = business_name
+    config['business_slug'] = slug
+    config['admin_ids'] = [admin_id]
+
     os.makedirs('configs', exist_ok=True)
-    
-    config = {
-        "config_version": 0,
-        "bot_token": "FROM_ENV",
-        "business_slug": data['slug'],
-        "business_name": data['business_name'],
-        "admin_ids": [int(data['admin_id'])],
-        
-        "services": [
-            {"id": "service1", "name": "Стрижка", "price": 1200},
-            {"id": "service2", "name": "Стрижка + борода", "price": 1800},
-            {"id": "service3", "name": "Укладка", "price": 800}
-        ],
-        
-        "booking": {
-            "work_start": 10,
-            "work_end": 20,
-            "slot_duration": 60
-        },
-        
-        "features": {
-            "enable_slot_booking": True,
-            "enable_admin_notify": True,
-            "require_phone": True,
-            "ask_comment": True
-        },
-        
-        "messages": {
-            "welcome": f"Добро пожаловать в {data['business_name']}! 👋\n\nВыберите действие:",
-            "success": "✅ Заявка #{id} принята! Мы свяжемся с вами в ближайшее время.",
-            "booking_cancelled": "✅ Запись отменена",
-            "error_phone": "❌ Некорректный формат номера. Введите в формате +79991234567",
-            "error_generic": "❌ Произошла ошибка. Попробуйте позже.",
-            "slot_taken": "❌ Это время уже занято"
-        },
-        
-        "faq": [
-            {"btn": "💰 Цены", "answer": "Наши цены:\n• Стрижка — 1200₽\n• Стрижка + борода — 1800₽\n• Укладка — 800₽"},
-            {"btn": "📍 Адрес", "answer": "📍 Наш адрес: уточните в настройках"},
-            {"btn": "🕐 Часы работы", "answer": "🕐 Мы работаем:\nПн-Пт: 10:00-20:00\nСб-Вс: 12:00-18:00"}
-        ]
-    }
+    config_path = 'configs/client_lite.json'
 
-    pin_hash = data.get('admin_pin_hash')
-    if isinstance(pin_hash, str) and pin_hash.strip():
-        config['admin_pin_hash'] = pin_hash
-    
-    # Добавляем тестовый ID если указан
-    if data.get('test_user_id'):
-        config['admin_ids'].append(int(data['test_user_id']))
-    
-    with open('configs/client_lite.json', 'w', encoding='utf-8') as f:
+    with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
-    
-    print("✅ Конфигурация создана: configs/client_lite.json")
+
+    print(f"✅ Создан конфиг: {config_path}")
+    return slug
+
 
 def install_dependencies():
-    """Установка зависимостей"""
-    print("\n📦 Установка зависимостей...")
-    
-    if not os.path.exists('requirements.txt'):
-        print("⚠️  requirements.txt не найден, создаём...")
-        with open('requirements.txt', 'w') as f:
-            f.write("aiogram==3.15.0\n")
-            f.write("python-dotenv==1.0.0\n")
-            f.write("apscheduler==3.10.4\n")
-    
-    try:
-        subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'], 
-                      check=True, capture_output=True)
-        print("✅ Зависимости установлены")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Ошибка установки зависимостей: {e}")
-        return False
+    """Установить зависимости"""
+    print_step(5, "Установка зависимостей")
 
-def init_database(config_path: str):
-    """Инициализация базы данных"""
-    print("\n💾 Инициализация базы данных...")
-    
+    if not os.path.exists('requirements.txt'):
+        print("⚠️ Файл requirements.txt не найден, пропускаем")
+        return
+
     try:
-        # Импортируем db_manager
+        subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt', '-q'],
+            check=True,
+            capture_output=True
+        )
+        print("✅ Зависимости установлены")
+    except subprocess.CalledProcessError:
+        print("⚠️ Ошибка установки зависимостей. Запустите вручную:")
+        print("   pip install -r requirements.txt")
+
+
+def init_database(slug):
+    """Инициализировать базу данных"""
+    print_step(6, "Инициализация базы данных")
+
+    try:
         from utils.db_manager import DBManager
-        
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-        
-        db_manager = DBManager(config['business_slug'])
-        db_manager.init_db()
-        db_manager.close()
-        
-        print(f"✅ База данных создана: db_{config['business_slug']}.sqlite")
-        return True
+        db = DBManager(slug)
+        db.init_db()
+        db.close()
+        print(f"✅ База данных создана: db_{slug}.sqlite")
     except Exception as e:
-        print(f"❌ Ошибка инициализации БД: {e}")
-        return False
+        print(f"⚠️ Ошибка инициализации БД: {e}")
+        print("   База будет создана при первом запуске бота")
+
+
+def print_success():
+    """Вывести инструкции по запуску"""
+    print("\n" + "=" * 55)
+    print("  ✅ УСТАНОВКА ЗАВЕРШЕНА!")
+    print("=" * 55)
+
+    print("""
+📋 Что дальше:
+
+1. Запустите клиентского бота:
+   python main.py
+
+2. В отдельном терминале запустите админ-панель:
+   python admin_bot/main.py
+
+3. Откройте вашего бота в Telegram и нажмите /start
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 Советы:
+   • Настройки меняйте в configs/client_lite.json
+   • Админ-панель доступна только владельцу (admin_ids)
+   • Для фонового запуска: nohup python main.py &
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+""")
+
 
 def main():
-    """Главная функция установщика"""
     print_header()
-    
-    # Шаг 1: BOT TOKEN
-    print("[1/6] Введите TOKEN основного бота (от @BotFather):")
-    print("      Формат: 1234567890:AAH3kJ...")
-    bot_token = input_with_validation(
-        "> ",
-        validator=validate_token,
-        required=True
-    )
-    
-    # Шаг 2: Admin Telegram ID
-    print("\n[2/6] Введите ваш Telegram ID (админ/владелец):")
-    print("      Узнать ID можно через бота @userinfobot")
-    admin_id = input_with_validation(
-        "> ",
-        validator=validate_telegram_id,
-        required=True
-    )
-    
-    # Шаг 3: Business Name
-    print("\n[3/6] Название бизнеса (например, 'Барбершоп Стиль'):")
-    business_name = input_with_validation(
-        "> ",
-        required=True
-    )
-    
-    # Шаг 4: Slug
-    print("\n[4/6] Уникальный slug (латиницей, например 'barbershop_style'):")
-    print("      Только строчные буквы, цифры и подчеркивание")
-    slug = input_with_validation(
-        "> ",
-        validator=validate_slug,
-        required=True
-    )
-    
-    # Шаг 5: Test User (опционально)
-    print("\n[5/6] (Опционально) Telegram ID тестировщика:")
-    print("      Нажмите Enter чтобы пропустить")
-    test_user_id = input_with_validation(
-        "> ",
-        validator=lambda x: validate_telegram_id(x) if x else True,
-        required=False
-    )
-    
-    # Шаг 6: Admin Bot
-    print("\n[6/6] Создать отдельного бота для админ-панели? (y/n):")
-    create_admin_bot = input("> ").strip().lower() == 'y'
-    
-    admin_bot_token = None
-    if create_admin_bot:
-        print("\n      Введите TOKEN админ-бота:")
-        admin_bot_token = input_with_validation(
-            "> ",
-            validator=validate_token,
-            required=True
-        )
 
-    admin_pin_hash = None
-    if create_admin_bot:
-        print("\n[Дополнительно] Установить PIN для админ-панели? (y/n):")
-        enable_pin = input("> ").strip().lower() == 'y'
-        if enable_pin:
-            while True:
-                pin = input("Введите PIN (минимум 4 цифры): ").strip()
-                if not (pin.isdigit() and len(pin) >= 4):
-                    print("❌ PIN должен быть минимум из 4 цифр")
-                    continue
-                admin_pin_hash = hashlib.sha256(pin.encode('utf-8')).hexdigest()
-                break
-    
-    # Сохраняем данные
-    data = {
-        'bot_token': bot_token,
-        'admin_id': admin_id,
-        'business_name': business_name,
-        'slug': slug,
-        'test_user_id': test_user_id,
-        'admin_bot_token': admin_bot_token,
-        'admin_pin_hash': admin_pin_hash,
-    }
-    
-    print("\n" + "="*60)
-    print("   СОЗДАНИЕ КОНФИГУРАЦИИ")
-    print("="*60 + "\n")
-    
-    # Создаём файлы
-    create_env_file(bot_token, admin_bot_token)
-    create_config_file(data)
-    
-    # Устанавливаем зависимости
-    if not install_dependencies():
-        print("\n⚠️  Продолжаем без установки зависимостей...")
-    
-    # Инициализируем БД
-    if not init_database('configs/client_lite.json'):
-        print("\n⚠️  База данных не инициализирована. Запустите вручную:")
-        print(f"   python main.py --config configs/client_lite.json")
-    
-    # Финальное сообщение
-    print("\n" + "="*60)
-    print("   ✅ УСТАНОВКА ЗАВЕРШЕНА!")
-    print("="*60 + "\n")
-    print("Запустите бота командой:")
-    print(f"  python main.py --config configs/client_lite.json\n")
-    
-    if create_admin_bot:
-        print("Для запуска админ-бота:")
-        print("  python admin_bot/main.py --config configs/client_lite.json\n")
-    
-    print("Настройте услуги и FAQ в файле:")
-    print("  configs/client_lite.json\n")
-    print("="*60 + "\n")
+    # 1. Выбор шаблона
+    template = choose_template()
+    print(f"\n✅ Выбран: {template['name']}")
+
+    # Загружаем конфиг из шаблона
+    config = load_template(template['file'])
+    default_name = config.get('business_name', 'Салон красоты')
+    default_slug = config.get('business_slug', 'beauty_salon')
+
+    # 2. Получаем токены
+    bot_token, admin_token = get_tokens()
+
+    # 3. Получаем ID администратора
+    admin_id = get_admin_id()
+
+    # 4. Получаем название бизнеса
+    business_name = get_business_name(default_name)
+
+    slug = default_slug
+
+    print("\n" + "=" * 55)
+    print("  📝 СОЗДАНИЕ КОНФИГУРАЦИИ")
+    print("=" * 55)
+
+    # 5. Создаём .env
+    create_env_file(bot_token, admin_token)
+
+    # 6. Создаём конфиг
+    create_config(config, business_name, admin_id, slug)
+
+    # 7. Устанавливаем зависимости
+    install_dependencies()
+
+    # 8. Инициализируем БД
+    init_database(slug)
+
+    # 9. Выводим инструкции
+    print_success()
+
 
 if __name__ == '__main__':
     try:
@@ -294,5 +282,5 @@ if __name__ == '__main__':
         print("\n\n❌ Установка прервана пользователем")
         sys.exit(1)
     except Exception as e:
-        print(f"\n\n❌ Критическая ошибка: {e}")
+        print(f"\n❌ Ошибка: {e}")
         sys.exit(1)

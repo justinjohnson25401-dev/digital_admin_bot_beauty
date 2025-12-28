@@ -393,7 +393,7 @@ class DBManager:
             logger.error(f"Error checking slot availability excluding order: {e}")
             return False
 
-    # ИЗМЕНЕНО: Добавлена поддержка параметра active_only (ошибка #8)
+    # ИЗМЕНЕНО: Добавлена поддержка параметра active_only и master_id
     def get_user_bookings(self, user_id: int, active_only: bool = True) -> list:
         """Получение списка записей пользователя"""
         try:
@@ -401,20 +401,19 @@ class DBManager:
             cursor = self.connection.cursor()
 
             if active_only:
-                # Только активные записи:
-                # - С датой бронирования >= сегодня
-                # - Или без даты бронирования (каталожные заказы)
+                # Только активные записи с master_id
                 cursor.execute("""
-                    SELECT id, service_name, booking_date, booking_time, price, status, created_at, comment, client_name, phone
+                    SELECT id, service_name, booking_date, booking_time, price, status,
+                           created_at, comment, client_name, phone, master_id
                     FROM orders
                     WHERE user_id = ? AND status = 'active'
                       AND (booking_date IS NULL OR booking_date >= date('now'))
                     ORDER BY COALESCE(booking_date, date('now')), booking_time
                 """, (user_id,))
             else:
-                # НОВОЕ: Вся история заказов (ошибка #8)
                 cursor.execute("""
-                    SELECT id, service_name, booking_date, booking_time, price, status, created_at, comment, client_name, phone
+                    SELECT id, service_name, booking_date, booking_time, price, status,
+                           created_at, comment, client_name, phone, master_id
                     FROM orders
                     WHERE user_id = ?
                     ORDER BY created_at DESC
@@ -434,7 +433,8 @@ class DBManager:
                     'created_at': row[6],
                     'comment': row[7] if len(row) > 7 else None,
                     'client_name': row[8] if len(row) > 8 else None,
-                    'phone': row[9] if len(row) > 9 else None
+                    'phone': row[9] if len(row) > 9 else None,
+                    'master_id': row[10] if len(row) > 10 else None
                 })
 
             return bookings
@@ -444,13 +444,13 @@ class DBManager:
             return []
 
     def get_order_by_id(self, order_id: int) -> dict:
-        """Получение информации о заказе по ID"""
+        """Получение информации о заказе по ID (включая master_id)"""
         try:
             self._ensure_connection()
             cursor = self.connection.cursor()
             cursor.execute("""
                 SELECT id, user_id, service_id, service_name, price, booking_date, booking_time,
-                       client_name, phone, comment, status
+                       client_name, phone, comment, status, master_id
                 FROM orders
                 WHERE id = ?
             """, (order_id,))
@@ -469,7 +469,8 @@ class DBManager:
                     'client_name': row[7],
                     'phone': row[8],
                     'comment': row[9],
-                    'status': row[10]
+                    'status': row[10],
+                    'master_id': row[11] if len(row) > 11 else None
                 }
 
             return None
@@ -479,13 +480,13 @@ class DBManager:
             return None
 
     def update_order(self, order_id: int, **kwargs) -> bool:
-        """Обновление полей заказа"""
+        """Обновление полей заказа (включая master_id)"""
         try:
             self._ensure_connection()
             set_parts = []
             values = []
             allowed_fields = ['service_id', 'service_name', 'price', 'booking_date',
-                            'booking_time', 'client_name', 'phone', 'comment']
+                            'booking_time', 'client_name', 'phone', 'comment', 'master_id']
 
             for field, value in kwargs.items():
                 if field in allowed_fields:

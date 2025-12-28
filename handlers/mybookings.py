@@ -13,14 +13,28 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-def _format_bookings_list(bookings: list) -> tuple[str, InlineKeyboardMarkup]:
-    """Форматирование списка записей и клавиатуры (устранение дублирования)"""
-    text = "📋 Ваши записи:\n\n"
+def _get_master_name(config: dict, master_id: str) -> str:
+    """Получить имя мастера по ID из конфига"""
+    if not master_id or not config:
+        return None
+    staff = config.get('staff', {})
+    if not staff.get('enabled', False):
+        return None
+    for master in staff.get('masters', []):
+        if master.get('id') == master_id:
+            return master.get('name')
+    return None
+
+
+def _format_bookings_list(bookings: list, config: dict = None) -> tuple[str, InlineKeyboardMarkup]:
+    """Форматирование списка записей и клавиатуры с отображением мастера"""
+    text = "📋 <b>Ваши записи:</b>\n\n"
 
     for i, booking in enumerate(bookings, 1):
         booking_date = booking['booking_date']
         booking_time = booking['booking_time']
         client_name = booking.get('client_name')
+        master_id = booking.get('master_id')
 
         if booking_date:
             try:
@@ -33,13 +47,20 @@ def _format_bookings_list(bookings: list) -> tuple[str, InlineKeyboardMarkup]:
 
         time_formatted = format_time(booking_time) if booking_time else 'не указано'
 
-        text += f"{i}. {booking['service_name']}\n"
+        text += f"<b>{i}. {booking['service_name']}</b>\n"
+
+        # Показываем мастера если staff.enabled и есть master_id
+        if master_id and config:
+            master_name = _get_master_name(config, master_id)
+            if master_name:
+                text += f"   👤 Мастер: {master_name}\n"
+
         if client_name:
             text += f"   Имя: {client_name}\n"
         text += (
-            f"   Дата: {date_formatted}\n"
-            f"   Время: {time_formatted}\n"
-            f"   Цена: {booking['price']}₽\n"
+            f"   📅 Дата: {date_formatted}\n"
+            f"   🕐 Время: {time_formatted}\n"
+            f"   💰 Цена: {booking['price']}₽\n"
             f"   ID: #{booking['id']}\n\n"
         )
 
@@ -47,11 +68,11 @@ def _format_bookings_list(bookings: list) -> tuple[str, InlineKeyboardMarkup]:
     for booking in bookings:
         buttons.append([
             InlineKeyboardButton(
-                text=f"✏️ Изменить #{booking['id']}",
+                text=f"✏️ #{booking['id']}",
                 callback_data=f"edit_booking:{booking['id']}"
             ),
             InlineKeyboardButton(
-                text=f"🗑 Отменить #{booking['id']}",
+                text=f"🗑 #{booking['id']}",
                 callback_data=f"cancel_order:{booking['id']}"
             )
         ])
@@ -62,16 +83,16 @@ def _format_bookings_list(bookings: list) -> tuple[str, InlineKeyboardMarkup]:
     return text, keyboard
 
 @router.message(Command("mybookings"))
-async def show_my_bookings_command(message: Message, db_manager, state: FSMContext):
+async def show_my_bookings_command(message: Message, db_manager, state: FSMContext, config: dict = None):
     """Показать список записей пользователя (команда)"""
-    await show_my_bookings(message, db_manager, state)
+    await show_my_bookings(message, db_manager, state, config)
 
 @router.message(F.text == "📋 Мои записи")
-async def show_my_bookings_button(message: Message, db_manager, state: FSMContext):
+async def show_my_bookings_button(message: Message, db_manager, state: FSMContext, config: dict = None):
     """Показать список записей пользователя (кнопка)"""
-    await show_my_bookings(message, db_manager, state)
+    await show_my_bookings(message, db_manager, state, config)
 
-async def show_my_bookings(message: Message, db_manager, state: FSMContext):
+async def show_my_bookings(message: Message, db_manager, state: FSMContext, config: dict = None):
     """Показать список записей пользователя"""
     await state.clear()
     user_id = message.from_user.id
@@ -84,7 +105,7 @@ async def show_my_bookings(message: Message, db_manager, state: FSMContext):
         )
         return
 
-    text, keyboard = _format_bookings_list(bookings)
+    text, keyboard = _format_bookings_list(bookings, config)
     await message.answer(text, reply_markup=keyboard)
     logger.info(f"User {user_id} viewed their bookings ({len(bookings)} active)")
 
@@ -490,7 +511,7 @@ async def confirm_order_edit(callback: CallbackQuery, state: FSMContext, config:
         bookings = db_manager.get_user_bookings(user_id, active_only=True)
 
         if bookings:
-            text, keyboard = _format_bookings_list(bookings)
+            text, keyboard = _format_bookings_list(bookings, config)
             await callback.message.answer(text, reply_markup=keyboard)
             logger.info(f"User {user_id} viewed updated bookings after edit")
 
@@ -502,7 +523,7 @@ async def confirm_order_edit(callback: CallbackQuery, state: FSMContext, config:
     await callback.answer()
 
 @router.callback_query(F.data == "back_to_mybookings")
-async def back_to_mybookings(callback: CallbackQuery, state: FSMContext, db_manager):
+async def back_to_mybookings(callback: CallbackQuery, state: FSMContext, db_manager, config: dict = None):
     """Возврат к списку записей"""
     await state.clear()
     user_id = callback.from_user.id
@@ -516,7 +537,7 @@ async def back_to_mybookings(callback: CallbackQuery, state: FSMContext, db_mana
         await callback.answer()
         return
 
-    text, keyboard = _format_bookings_list(bookings)
+    text, keyboard = _format_bookings_list(bookings, config)
     await callback.message.answer(text, reply_markup=keyboard)
     logger.info(f"User {user_id} returned to bookings list ({len(bookings)} active)")
     await callback.answer()

@@ -1,0 +1,235 @@
+{
+  "template_name": "Салон красоты",
+  "business_type": "time_slots",
+  "description": "Небольшой салон красоты на 5-8 мастеров с полным прайсом услуг",
+
+  "config": {
+    "config_version": 1,
+    "bot_token": "FROM_ENV",
+    "business_slug": "beauty_salon",
+    "business_name": "Салон красоты \"Эталон\"",
+    "admin_ids": [],
+    "industry": "beauty",
+
+    "contacts": {
+      "address": "г. Москва, ул. Красивая, д. 25",
+      "phone": "+7 (495) 987-65-43",
+      "telegram": "@salon_etalon"
+    },
+
+    "services": [
+      {"id": "hair_women_cut", "name": "Женская стрижка", "price": 2000, "duration": 60, "category": "Волосы"},
+      {"id": "hair_men_cut", "name": "Мужская стрижка", "price": 1500, "duration": 45, "category": "Волосы"},
+      {"id": "hair_kids_cut", "name": "Детская стрижка", "price": 1000, "duration": 30, "category": "Волосы"},
+      {"id": "hair_coloring_roots", "name": "Окрашивание корней", "price": 3000, "duration": 90, "category": "Волосы"},
+      {"id": "hair_coloring_full", "name": "Окрашивание полное", "price": 5000, "duration": 150, "category": "Волосы"},
+      {"id": "hair_highlights", "name": "Мелирование", "price": 4500, "duration": 120, "category": "Волосы"},
+      {"id": "hair_styling", "name": "Укладка", "price": 1500, "duration": 45, "category": "Волосы"},
+      {"id": "hair_treatment", "name": "Уход за волосами", "price": 2500, "duration": 60, "category": "Волосы"},
+
+      {"id": "nails_manicure_classic", "name": "Маникюр классический", "price": 1200, "duration": 45, "category": "Ногти"},
+      {"id": "nails_manicure_gel", "name": "Маникюр с гель-лаком", "price": 2200, "duration": 90, "category": "Ногти"},
+      {"id": "nails_manicure_design", "name": "Маникюр с дизайном", "price": 2800, "duration": 105, "category": "Ногти"},
+      {"id": "nails_pedicure_classic", "name": "Педикюр классический", "price": 2000, "duration": 75, "category": "Ногти"},
+      {"id": "nails_pedicure_gel", "name": "Педикюр с покрытием", "price": 3000, "duration": 105, "category": "Ногти"},
+      {"id": "nails_extension", "name": "Наращивание ногтей", "price": 4000, "duration": 150, "category": "Ногти"},
+
+      {"id": "brows_correction", "name": "Коррекция бровей", "price": 1000, "duration": 30, "category": "Брови и ресницы"},
+      {"id": "brows_coloring", "name": "Окрашивание бровей", "price": 800, "duration": 20, "category": "Брови и ресницы"},
+      {"id": "brows_lamination", "name": "Ламинирование бровей", "price": 2500, "duration": 60, "category": "Брови и ресницы"},
+      {"id": "lash_lamination", "name": "Ламинирование ресниц", "price": 2800, "duration": 60, "category": "Брови и ресницы"},
+      {"id": "lash_extension_classic", "name": "Наращивание ресниц классика", "price": 3000, "duration": 120, "category": "Брови и ресницы"},
+      {"id": "lash_extension_volume", "name": "Наращивание ресниц объём", "price": 4000, "duration": 150, "category": "Брови и ресницы"},
+
+      {"id": "face_cleaning_classic", "name": "Чистка лица классическая", "price": 3500, "duration": 75, "category": "Косметология"},
+      {"id": "face_cleaning_ultrasound", "name": "Чистка лица ультразвуковая", "price": 3000, "duration": 60, "category": "Косметология"},
+      {"id": "face_peeling", "name": "Пилинг", "price": 2800, "duration": 45, "category": "Косметология"},
+      {"id": "face_massage", "name": "Массаж лица", "price": 2000, "duration": 45, "category": "Косметология"},
+      {"id": "face_mask", "name": "Маска для лица", "price": 1500, "duration": 30, "category": "Косметология"},
+
+      {"id": "combo_cut_styling", "name": "Стрижка + укладка", "price": 3000, "duration": 90, "category": "Комплексные услуги"},
+      {"id": "combo_cut_coloring", "name": "Стрижка + окрашивание", "price": 6500, "duration": 180, "category": "Комплексные услуги"},
+      {"id": "combo_mani_pedi", "name": "Маникюр + педикюр", "price": 4500, "duration": 150, "category": "Комплексные услуги"},
+      {"id": "combo_brows_full", "name": "Брови полный комплекс", "price": 3500, "duration": 75, "category": "Комплексные услуги"},
+      {"id": "combo_face_care", "name": "Уход за лицом комплекс", "price": 5500, "duration": 120, "category": "Комплексные услуги"},
+      {"id": "combo_bride", "name": "Образ невесты", "price": 15000, "duration": 240, "category": "Комплексные услуги"}
+    ],
+
+    "booking": {
+      "work_start": 9,
+      "work_end": 21,
+      "slot_duration": 30,
+      "timezone": "Europe/Moscow"
+    },
+
+    "timezone_city": "Москва",
+    "timezone_offset_hours": 3,
+
+    "assign_any_master": false,
+
+    "faq": [
+      {"btn": "💰 Цены", "answer": "Актуальные цены смотрите в разделе «Услуги и цены».\n\nДействуют скидки постоянным клиентам!"},
+      {"btn": "📍 Адрес", "answer": "📍 г. Москва, ул. Красивая, д. 25\n\n🚇 7 минут пешком от метро «Красные ворота»\n🚗 Бесплатная парковка во дворе"},
+      {"btn": "🕒 Часы работы", "answer": "Ежедневно: 09:00–21:00\n\nЗапись на удобное время через бота!"},
+      {"btn": "📞 Контакты", "answer": "☎️ +7 (495) 987-65-43\n📱 Telegram: @salon_etalon\n📷 Instagram: @salon_etalon\n💬 WhatsApp: +7 (495) 987-65-43"}
+    ],
+
+    "features": {
+      "enable_slot_booking": true,
+      "enable_admin_notify": true,
+      "require_phone": true,
+      "ask_comment": true
+    },
+
+    "messages": {
+      "welcome": "👋 Добро пожаловать в салон красоты «Эталон»!\n\nЗдесь вы можете записаться к нашим мастерам онлайн за 30 секунд.",
+      "success": "✅ Запись №{id} подтверждена!\nЖдём вас {date} в {time}.\n\nАдрес: ул. Красивая, д. 25",
+      "booking_cancelled": "❌ Запись отменена. Будем рады видеть вас снова!",
+      "error_phone": "❌ Некорректный номер. Введите в формате +79991234567",
+      "error_generic": "❌ Произошла ошибка. Попробуйте позже.",
+      "slot_taken": "❌ Это время уже занято"
+    },
+
+    "staff": {
+      "enabled": true,
+      "masters": [
+        {
+          "id": "master_anna",
+          "name": "Анна",
+          "specialization": "Парикмахер-стилист",
+          "active": true,
+          "services": ["hair_women_cut", "hair_styling", "hair_treatment", "combo_cut_styling"],
+          "schedule": {
+            "monday": {"working": true, "start": "09:00", "end": "18:00"},
+            "tuesday": {"working": true, "start": "09:00", "end": "18:00"},
+            "wednesday": {"working": true, "start": "09:00", "end": "18:00"},
+            "thursday": {"working": true, "start": "09:00", "end": "18:00"},
+            "friday": {"working": true, "start": "09:00", "end": "18:00"},
+            "saturday": {"working": false},
+            "sunday": {"working": false}
+          },
+          "closed_dates": []
+        },
+        {
+          "id": "master_svetlana",
+          "name": "Светлана",
+          "specialization": "Колорист",
+          "active": true,
+          "services": ["hair_coloring_roots", "hair_coloring_full", "hair_highlights", "combo_cut_coloring"],
+          "schedule": {
+            "monday": {"working": false},
+            "tuesday": {"working": true, "start": "10:00", "end": "20:00"},
+            "wednesday": {"working": true, "start": "10:00", "end": "20:00"},
+            "thursday": {"working": true, "start": "10:00", "end": "20:00"},
+            "friday": {"working": true, "start": "10:00", "end": "20:00"},
+            "saturday": {"working": true, "start": "10:00", "end": "18:00"},
+            "sunday": {"working": false}
+          },
+          "closed_dates": []
+        },
+        {
+          "id": "master_dmitry",
+          "name": "Дмитрий",
+          "specialization": "Барбер",
+          "active": true,
+          "services": ["hair_men_cut", "hair_kids_cut"],
+          "schedule": {
+            "monday": {"working": true, "start": "10:00", "end": "21:00"},
+            "tuesday": {"working": true, "start": "10:00", "end": "21:00"},
+            "wednesday": {"working": false},
+            "thursday": {"working": true, "start": "10:00", "end": "21:00"},
+            "friday": {"working": true, "start": "10:00", "end": "21:00"},
+            "saturday": {"working": true, "start": "10:00", "end": "20:00"},
+            "sunday": {"working": true, "start": "11:00", "end": "18:00"}
+          },
+          "closed_dates": []
+        },
+        {
+          "id": "master_maria",
+          "name": "Мария",
+          "specialization": "Мастер маникюра",
+          "active": true,
+          "services": ["nails_manicure_classic", "nails_manicure_gel", "nails_manicure_design", "nails_extension"],
+          "schedule": {
+            "monday": {"working": true, "start": "09:00", "end": "18:00"},
+            "tuesday": {"working": true, "start": "09:00", "end": "18:00"},
+            "wednesday": {"working": true, "start": "09:00", "end": "18:00"},
+            "thursday": {"working": true, "start": "09:00", "end": "18:00"},
+            "friday": {"working": true, "start": "09:00", "end": "18:00"},
+            "saturday": {"working": true, "start": "10:00", "end": "17:00"},
+            "sunday": {"working": false}
+          },
+          "closed_dates": []
+        },
+        {
+          "id": "master_irina",
+          "name": "Ирина",
+          "specialization": "Мастер педикюра",
+          "active": true,
+          "services": ["nails_pedicure_classic", "nails_pedicure_gel", "combo_mani_pedi"],
+          "schedule": {
+            "monday": {"working": false},
+            "tuesday": {"working": true, "start": "10:00", "end": "19:00"},
+            "wednesday": {"working": true, "start": "10:00", "end": "19:00"},
+            "thursday": {"working": true, "start": "10:00", "end": "19:00"},
+            "friday": {"working": true, "start": "10:00", "end": "19:00"},
+            "saturday": {"working": true, "start": "10:00", "end": "18:00"},
+            "sunday": {"working": false}
+          },
+          "closed_dates": []
+        },
+        {
+          "id": "master_elena",
+          "name": "Елена",
+          "specialization": "Бровист-лэшмейкер",
+          "active": true,
+          "services": ["brows_correction", "brows_coloring", "brows_lamination", "lash_lamination", "lash_extension_classic", "lash_extension_volume", "combo_brows_full"],
+          "schedule": {
+            "monday": {"working": true, "start": "11:00", "end": "20:00"},
+            "tuesday": {"working": true, "start": "11:00", "end": "20:00"},
+            "wednesday": {"working": false},
+            "thursday": {"working": true, "start": "11:00", "end": "20:00"},
+            "friday": {"working": true, "start": "11:00", "end": "20:00"},
+            "saturday": {"working": true, "start": "10:00", "end": "18:00"},
+            "sunday": {"working": true, "start": "10:00", "end": "16:00"}
+          },
+          "closed_dates": []
+        },
+        {
+          "id": "master_olga",
+          "name": "Ольга",
+          "specialization": "Косметолог",
+          "active": true,
+          "services": ["face_cleaning_classic", "face_cleaning_ultrasound", "face_peeling", "face_massage", "face_mask", "combo_face_care"],
+          "schedule": {
+            "monday": {"working": true, "start": "09:00", "end": "17:00"},
+            "tuesday": {"working": false},
+            "wednesday": {"working": true, "start": "09:00", "end": "17:00"},
+            "thursday": {"working": false},
+            "friday": {"working": true, "start": "09:00", "end": "17:00"},
+            "saturday": {"working": true, "start": "10:00", "end": "16:00"},
+            "sunday": {"working": false}
+          },
+          "closed_dates": []
+        },
+        {
+          "id": "master_natalia",
+          "name": "Наталья",
+          "specialization": "Стилист-универсал",
+          "active": true,
+          "services": ["hair_women_cut", "hair_styling", "combo_bride"],
+          "schedule": {
+            "monday": {"working": false},
+            "tuesday": {"working": true, "start": "10:00", "end": "19:00"},
+            "wednesday": {"working": true, "start": "10:00", "end": "19:00"},
+            "thursday": {"working": true, "start": "10:00", "end": "19:00"},
+            "friday": {"working": true, "start": "10:00", "end": "19:00"},
+            "saturday": {"working": true, "start": "09:00", "end": "20:00"},
+            "sunday": {"working": true, "start": "09:00", "end": "18:00"}
+          },
+          "closed_dates": []
+        }
+      ]
+    }
+  }
+}
