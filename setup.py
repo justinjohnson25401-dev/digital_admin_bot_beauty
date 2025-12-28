@@ -10,6 +10,11 @@ import json
 import subprocess
 import re
 
+# ==================== ВЕРСИЯ БОТА ====================
+BOT_VERSION = "2.0.0"
+BOT_BUILD_DATE = "2025-12-29"
+# =====================================================
+
 TEMPLATES = {
     "1": {
         "name": "Соло-мастер",
@@ -32,6 +37,7 @@ TEMPLATES = {
 def print_header():
     print("\n" + "=" * 55)
     print("  🎀 УСТАНОВЩИК БОТА ДЛЯ САЛОНА КРАСОТЫ")
+    print(f"  📦 Версия: {BOT_VERSION} ({BOT_BUILD_DATE})")
     print("=" * 55 + "\n")
 
 
