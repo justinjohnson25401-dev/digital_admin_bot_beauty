@@ -75,7 +75,7 @@ async def show_staff_menu(callback: CallbackQuery, config: dict, state: FSMConte
 
 
 @router.callback_query(F.data == "toggle_staff")
-async def toggle_staff_feature(callback: CallbackQuery, config: dict, config_manager):
+async def toggle_staff_feature(callback: CallbackQuery, config: dict, config_manager, state: FSMContext):
     """Включить/выключить функцию персонала"""
 
     editor = get_config_editor(config)
@@ -94,7 +94,7 @@ async def toggle_staff_feature(callback: CallbackQuery, config: dict, config_man
     status = "✅ Включена" if not current else "❌ Отключена"
     await callback.answer(f"Функция персонала: {status}")
 
-    await show_staff_menu(callback, config)
+    await show_staff_menu(callback, config, state)
 
 
 # ==================== ДОБАВЛЕНИЕ МАСТЕРА ====================
@@ -834,7 +834,7 @@ async def delete_master_confirm(callback: CallbackQuery, config: dict, db_manage
 
 
 @router.callback_query(F.data.startswith("confirm_delete_master_"))
-async def delete_master_execute(callback: CallbackQuery, config: dict, config_manager):
+async def delete_master_execute(callback: CallbackQuery, config: dict, config_manager, state: FSMContext):
     """Выполнить удаление мастера с обработкой ошибок"""
 
     master_id = callback.data.replace("confirm_delete_master_", "")
@@ -868,7 +868,7 @@ async def delete_master_execute(callback: CallbackQuery, config: dict, config_ma
         )
         return
 
-    await show_staff_menu(callback, config)
+    await show_staff_menu(callback, config, state)
 
 
 # ==================== ЗАКРЫТЫЕ ДАТЫ ====================
