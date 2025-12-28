@@ -3,6 +3,7 @@
 """
 
 import logging
+from pathlib import Path
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -17,16 +18,22 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
+# Корневая директория проекта (parent of admin_handlers/)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 def get_config_editor(config: dict) -> ConfigEditor:
-    """Получить ConfigEditor с правильным путём"""
-    config_path = f"configs/{config.get('business_slug', 'client_lite')}.json"
-    return ConfigEditor(config_path)
+    """Получить ConfigEditor с абсолютным путём к конфигу"""
+    # setup.py всегда создаёт configs/client_lite.json
+    config_path = PROJECT_ROOT / "configs" / "client_lite.json"
+    return ConfigEditor(str(config_path))
 
 
 @router.callback_query(F.data == "staff_menu")
-async def show_staff_menu(callback: CallbackQuery, config: dict):
+async def show_staff_menu(callback: CallbackQuery, config: dict, state: FSMContext):
     """Главное меню управления персоналом"""
+    # Очищаем FSM state при возврате в меню
+    await state.clear()
 
     staff_data = config.get('staff', {})
     is_enabled = staff_data.get('enabled', False)

@@ -714,8 +714,7 @@ async def process_phone(message: Message, state: FSMContext, config: dict):
 
 @router.callback_query(BookingState.waiting_comment_choice, F.data == "add_comment")
 async def add_comment(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Введите комментарий:")
-    await callback.message.answer("Введите комментарий:", reply_markup=get_cancel_keyboard())
+    await callback.message.edit_text("✏️ Введите комментарий:", reply_markup=get_cancel_keyboard())
     await state.set_state(BookingState.input_comment)
     await callback.answer()
 
@@ -1083,8 +1082,7 @@ async def time_edited(callback: CallbackQuery, state: FSMContext, config: dict, 
 
 @router.callback_query(BookingState.confirmation, F.data == "edit_name")
 async def edit_name(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Введите имя:")
-    await callback.message.answer("Введите новое имя:", reply_markup=get_cancel_keyboard())
+    await callback.message.edit_text("✏️ Введите новое имя:", reply_markup=get_cancel_keyboard())
     await state.set_state(BookingState.edit_name)
     await callback.answer()
 
@@ -1102,8 +1100,7 @@ async def name_edited(message: Message, state: FSMContext, config: dict):
 
 @router.callback_query(BookingState.confirmation, F.data == "edit_phone")
 async def edit_phone(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Введите телефон:")
-    await callback.message.answer("Отправьте номер:", reply_markup=get_phone_input_keyboard())
+    await callback.message.edit_text("📞 Отправьте номер:", reply_markup=get_phone_input_keyboard())
     await state.set_state(BookingState.edit_phone)
     await callback.answer()
 
@@ -1143,8 +1140,7 @@ async def phone_edited_text(message: Message, state: FSMContext, config: dict):
 
 @router.callback_query(BookingState.confirmation, F.data == "edit_comment")
 async def edit_comment(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Введите комментарий (0 - удалить):")
-    await callback.message.answer("Введите комментарий:", reply_markup=get_cancel_keyboard())
+    await callback.message.edit_text("✏️ Введите комментарий (0 - удалить):", reply_markup=get_cancel_keyboard())
     await state.set_state(BookingState.edit_comment)
     await callback.answer()
 

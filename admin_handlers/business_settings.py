@@ -2,6 +2,7 @@
 Настройки бизнеса - редактирование названия, часов работы, слотов.
 """
 
+from pathlib import Path
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -12,12 +13,14 @@ from utils.validators import validate_business_name, validate_work_hours, valida
 
 router = Router()
 
+# Корневая директория проекта
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 def get_config_editor(config: dict) -> ConfigEditor:
-    """Получить ConfigEditor с правильным путём"""
-    # Путь к конфигу берём из business_slug
-    config_path = f"configs/{config.get('business_slug', 'client_lite')}.json"
-    return ConfigEditor(config_path)
+    """Получить ConfigEditor с абсолютным путём к конфигу"""
+    config_path = PROJECT_ROOT / "configs" / "client_lite.json"
+    return ConfigEditor(str(config_path))
 
 
 @router.callback_query(F.data == "business_settings")
