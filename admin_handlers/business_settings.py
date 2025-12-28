@@ -32,10 +32,10 @@ async def show_business_settings(callback: CallbackQuery, config: dict):
 Текущие данные:
 ━━━━━━━━━━━━━━━━━━━━━━
 📍 <b>Название:</b> {config.get('business_name', 'Не указано')}
-🕐 <b>Начало работы:</b> {booking.get('work_start', 10)}:00
-🕑 <b>Конец работы:</b> {booking.get('work_end', 20)}:00
-⏱ <b>Длительность слота:</b> {booking.get('slot_duration', 60)} минут
-🌍 <b>Часовой пояс:</b> {config.get('timezone_city', 'Не указано')} (UTC{config.get('timezone_offset_hours', '+3'):+d})
+🕐 <b>Начало работы:</b> {int(booking.get('work_start', 10))}:00
+🕑 <b>Конец работы:</b> {int(booking.get('work_end', 20))}:00
+⏱ <b>Длительность слота:</b> {int(booking.get('slot_duration', 60))} минут
+🌍 <b>Часовой пояс:</b> {config.get('timezone_city', 'Не указано')} (UTC{int(config.get('timezone_offset_hours', 3)):+d})
 ━━━━━━━━━━━━━━━━━━━━━━
 
 Выберите что изменить:
