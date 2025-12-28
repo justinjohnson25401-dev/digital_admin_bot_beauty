@@ -184,7 +184,7 @@ async def callback_faq_menu(callback: CallbackQuery, config: dict):
     faq_items = config.get('faq', [])
 
     if not faq_items:
-        await callback.message.answer("FAQ пока не настроен.")
+        await callback.message.edit_text("FAQ пока не настроен.")
         await callback.answer()
         return
 
@@ -201,7 +201,7 @@ async def callback_faq_menu(callback: CallbackQuery, config: dict):
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     text = "❓ <b>ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ</b>\n\nВыберите интересующий вас вопрос:"
-    await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 
 
@@ -261,7 +261,8 @@ async def handle_faq_callback(callback: CallbackQuery, config: dict):
         [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
     ])
 
-    await callback.message.answer(answer, reply_markup=nav_keyboard, parse_mode="HTML")
+    # Используем edit_text вместо answer для единого окна
+    await callback.message.edit_text(answer, reply_markup=nav_keyboard, parse_mode="HTML")
     await callback.answer()
 
 

@@ -926,11 +926,14 @@ async def admin_help_handler(callback):
     await callback.answer()
 
 
-async def admin_main_handler(callback, config: dict, db_manager):
+async def admin_main_handler(callback, config: dict, db_manager, state: FSMContext):
     """Возврат в главное меню"""
+    # Очищаем FSM state при возврате в главное меню
+    await state.clear()
+
     business_name = config.get('business_name', 'Ваш бизнес')
     stats = db_manager.get_stats('today')
-    
+
     text = (
         f"🎯 <b>Админ-панель \"{business_name}\"</b>\n\n"
         f"📅 Сегодня:\n"
@@ -939,7 +942,7 @@ async def admin_main_handler(callback, config: dict, db_manager):
         f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
         "Выберите действие:"
     )
-    
+
     keyboard = get_main_menu_keyboard()
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()

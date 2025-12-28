@@ -79,8 +79,7 @@ async def view_service(callback: CallbackQuery, config_manager):
     text = (
         f"📋 <b>{service['name']}</b>\n\n"
         f"💰 Цена: {service['price']}₽\n"
-        f"⏱ Длительность: {duration} мин\n"
-        f"🆔 ID: {service['id']}"
+        f"⏱ Длительность: {duration} мин"
     )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -406,8 +405,7 @@ async def process_edit_name(message: Message, state: FSMContext, config_manager)
                 f"✅ Название изменено на: {new_name}\n\n"
                 f"📋 <b>{service['name']}</b>\n\n"
                 f"💰 Цена: {service['price']}₽\n"
-                f"⏱ Длительность: {duration} мин\n"
-                f"🆔 ID: {service['id']}"
+                f"⏱ Длительность: {duration} мин"
             )
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
@@ -457,8 +455,7 @@ async def process_edit_price(message: Message, state: FSMContext, config_manager
                 f"✅ Цена изменена на: {new_price}₽\n\n"
                 f"📋 <b>{service['name']}</b>\n\n"
                 f"💰 Цена: {service['price']}₽\n"
-                f"⏱ Длительность: {duration} мин\n"
-                f"🆔 ID: {service['id']}"
+                f"⏱ Длительность: {duration} мин"
             )
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
@@ -511,8 +508,7 @@ async def process_edit_duration(callback: CallbackQuery, state: FSMContext, conf
                 f"✅ Длительность изменена на: {new_duration} мин\n\n"
                 f"📋 <b>{service['name']}</b>\n\n"
                 f"💰 Цена: {service['price']}₽\n"
-                f"⏱ Длительность: {duration} мин\n"
-                f"🆔 ID: {service['id']}"
+                f"⏱ Длительность: {duration} мин"
             )
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
@@ -588,8 +584,7 @@ async def process_edit_duration_custom(message: Message, state: FSMContext, conf
                 f"✅ Длительность изменена на: {new_duration} мин\n\n"
                 f"📋 <b>{service['name']}</b>\n\n"
                 f"💰 Цена: {service['price']}₽\n"
-                f"⏱ Длительность: {duration} мин\n"
-                f"🆔 ID: {service['id']}"
+                f"⏱ Длительность: {duration} мин"
             )
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
