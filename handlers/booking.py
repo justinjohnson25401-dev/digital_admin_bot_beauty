@@ -94,23 +94,42 @@ def generate_dates_keyboard(back_callback: str = "back_to_masters") -> InlineKey
 
 def generate_time_slots_keyboard(config: dict, db_manager, booking_date: str,
                                   master_id: str = None, exclude_order_id: int = None) -> InlineKeyboardMarkup:
+    """Генерация клавиатуры с доступными слотами времени.
+
+    ИСПРАВЛЕНО: Теперь корректно работает с slot_duration < 60 минут.
+    Используется минутная арифметика вместо часовой.
+    """
     buttons = []
     work_start = int(config.get('booking', {}).get('work_start', 10))
     work_end = int(config.get('booking', {}).get('work_end', 20))
     slot_duration = int(config.get('booking', {}).get('slot_duration', 60))
 
+    # Защита от нулевой или отрицательной длительности
+    if slot_duration <= 0:
+        slot_duration = 60
+        logger.warning("slot_duration <= 0, using default 60 minutes")
+
     current_time = datetime.now()
     selected_date = datetime.fromisoformat(booking_date).date()
     is_today = selected_date == current_time.date()
 
-    current_slot = work_start
-    while current_slot < work_end:
-        slot_time = f"{current_slot:02d}:00"
+    # ИСПРАВЛЕНО: Работаем в минутах от начала дня
+    # work_start=10 означает 10:00 = 600 минут от полуночи
+    # work_end=21 означает 21:00 = 1260 минут от полуночи
+    start_minutes = work_start * 60
+    end_minutes = work_end * 60
+    current_minutes = start_minutes
+
+    while current_minutes < end_minutes:
+        # Формируем время слота
+        hour = current_minutes // 60
+        minute = current_minutes % 60
+        slot_time = f"{hour:02d}:{minute:02d}"
 
         if is_today:
             slot_datetime = datetime.combine(selected_date, datetime.strptime(slot_time, "%H:%M").time())
             if slot_datetime <= current_time:
-                current_slot += slot_duration // 60
+                current_minutes += slot_duration
                 continue
 
         # Проверка доступности с учётом мастера
@@ -139,7 +158,8 @@ def generate_time_slots_keyboard(config: dict, db_manager, booking_date: str,
                 callback_data="slot_taken"
             )])
 
-        current_slot += slot_duration // 60
+        # ИСПРАВЛЕНО: Увеличиваем на slot_duration минут
+        current_minutes += slot_duration
 
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_dates")])
     buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
