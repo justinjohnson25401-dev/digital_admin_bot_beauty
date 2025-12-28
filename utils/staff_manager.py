@@ -375,7 +375,7 @@ class StaffManager:
         """
         lines = [
             f"👤 {master['name']}",
-            f"💼 {master.get('role', 'Мастер')}",
+            f"💼 {master.get('specialization') or master.get('role', 'Мастер')}",
         ]
 
         # Услуги

@@ -123,8 +123,8 @@ async def show_address(message: Message, config: dict):
 
     # Рабочие часы
     booking = config.get('booking', {})
-    work_start = booking.get('work_start', 10)
-    work_end = booking.get('work_end', 20)
+    work_start = int(booking.get('work_start', 10))
+    work_end = int(booking.get('work_end', 20))
     timezone_city = config.get('timezone_city', '')
 
     text = "📍 <b>КАК НАС НАЙТИ</b>\n"
@@ -221,8 +221,8 @@ async def handle_faq_callback(callback: CallbackQuery, config: dict):
     # Динамический график работы
     if 'час' in btn or 'график' in btn or 'работ' in btn:
         booking = config.get('booking', {})
-        work_start = booking.get('work_start', 10)
-        work_end = booking.get('work_end', 20)
+        work_start = int(booking.get('work_start', 10))
+        work_end = int(booking.get('work_end', 20))
         answer = f"🕐 <b>Мы работаем:</b>\nЕжедневно: {work_start:02d}:00 – {work_end:02d}:00"
 
     await callback.message.answer(answer, parse_mode="HTML")
