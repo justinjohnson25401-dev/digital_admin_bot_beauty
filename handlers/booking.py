@@ -491,7 +491,7 @@ async def date_selected(callback: CallbackQuery, state: FSMContext, config: dict
     booking_date = callback.data.split(":")[1]
     try:
         selected_date = datetime.fromisoformat(booking_date).date()
-    except:
+    except Exception:
         await callback.answer("Некорректная дата", show_alert=True)
         return
 
@@ -540,7 +540,7 @@ async def time_selected(callback: CallbackQuery, state: FSMContext, config: dict
     try:
         selected_date = datetime.fromisoformat(booking_date).date()
         slot_dt = datetime.combine(selected_date, datetime.strptime(booking_time, "%H:%M").time())
-    except:
+    except Exception:
         await callback.answer("Некорректное время", show_alert=True)
         return
 
@@ -811,7 +811,7 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: di
 
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
-    except:
+    except Exception:
         pass
 
     user_id = callback.from_user.id
@@ -834,7 +834,7 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: di
                 await callback.answer("Время уже прошло", show_alert=True)
                 await state.update_data(booking_confirmed=False)
                 return
-        except:
+        except Exception:
             pass
 
         if not db_manager.check_slot_availability(booking_date, booking_time):
