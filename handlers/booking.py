@@ -250,11 +250,6 @@ async def start_booking(message: Message, state: FSMContext, config: dict):
 async def start_booking_with_master(message: Message, state: FSMContext, config: dict, master_id: str):
     """Начало записи с предвыбранным мастером"""
     await state.clear()
-    await state.update_data(
-        fsm_started_at=time.time(),
-        booking_confirmed=False,
-        selected_master=master_id  # Мастер уже выбран
-    )
 
     # Получаем данные мастера
     masters = config.get('staff', {}).get('masters', [])
@@ -271,17 +266,27 @@ async def start_booking_with_master(message: Message, state: FSMContext, config:
     # Фильтруем услуги, которые может оказывать этот мастер
     if master_services:
         services = [s for s in all_services if s.get('id') in master_services]
+        master_service_ids = master_services
     else:
         services = all_services
+        master_service_ids = [s.get('id') for s in all_services]
 
     if not services:
         await message.answer(f"К сожалению, у мастера {master_name} нет доступных услуг.")
         return
 
+    # Сохраняем в state: мастер уже выбран + список его услуг
+    await state.update_data(
+        fsm_started_at=time.time(),
+        booking_confirmed=False,
+        master_id=master_id,  # Мастер уже выбран
+        master_name=master_name,
+        master_service_ids=master_service_ids,  # ID услуг мастера для фильтрации
+        booking_with_preselected_master=True  # Флаг предвыбора мастера
+    )
+
     # Показываем услуги мастера
     categories = get_categories_from_services(services)
-
-    await message.answer(f"📅 Запись к мастеру: <b>{master_name}</b>\n\nВыберите услугу:", parse_mode="HTML")
 
     if len(categories) > 1:
         buttons = []
@@ -293,12 +298,18 @@ async def start_booking_with_master(message: Message, state: FSMContext, config:
                     text=f"📂 {cat}",
                     callback_data=f"cat:{cat}"
                 )])
+        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await message.answer("Выберите категорию:", reply_markup=keyboard)
+        await message.answer(
+            f"📅 Запись к мастеру: <b>{master_name}</b>\n\nВыберите категорию:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
         await state.set_state(BookingState.choosing_category)
     else:
-        await show_services_list(message, state, config, services)
+        await message.answer(f"📅 Запись к мастеру: <b>{master_name}</b>", parse_mode="HTML")
+        await show_services_list_filtered(message, state, config, services)
 
 
 async def show_services_list(message: Message, state: FSMContext, config: dict, services: list):
@@ -318,6 +329,22 @@ async def show_services_list(message: Message, state: FSMContext, config: dict, 
     await state.set_state(BookingState.choosing_service)
 
 
+async def show_services_list_filtered(message: Message, state: FSMContext, config: dict, services: list):
+    """Показать список услуг (для записи с предвыбранным мастером)"""
+    buttons = []
+    for svc in services:
+        duration = svc.get('duration', 0)
+        dur_text = f" • {duration}мин" if duration else ""
+        btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
+        buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
+
+    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer("Выберите услугу:", reply_markup=keyboard)
+    await state.set_state(BookingState.choosing_service)
+
+
 # ==================== ВЫБОР КАТЕГОРИИ ====================
 
 @router.callback_query(BookingState.choosing_category, F.data.startswith("cat:"))
@@ -328,7 +355,16 @@ async def category_selected(callback: CallbackQuery, state: FSMContext, config: 
     category = callback.data.split(":", 1)[1]
     await state.update_data(selected_category=category)
 
-    services = config.get('services', [])
+    data = await state.get_data()
+    all_services = config.get('services', [])
+
+    # Если запись с предвыбранным мастером - фильтруем по его услугам
+    master_service_ids = data.get('master_service_ids')
+    if master_service_ids:
+        services = [s for s in all_services if s.get('id') in master_service_ids]
+    else:
+        services = all_services
+
     cat_services = get_services_by_category(services, category)
 
     buttons = []
@@ -338,7 +374,9 @@ async def category_selected(callback: CallbackQuery, state: FSMContext, config: 
         btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
 
-    buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
+    # Если запись с предвыбранным мастером - не показываем "К категориям"
+    if not data.get('booking_with_preselected_master'):
+        buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
     buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -388,6 +426,14 @@ async def service_selected(callback: CallbackQuery, state: FSMContext, config: d
         service_name=selected_service['name'],
         price=selected_service['price']
     )
+
+    # Проверяем, есть ли уже предвыбранный мастер
+    data = await state.get_data()
+    if data.get('booking_with_preselected_master') and data.get('master_id'):
+        # Мастер уже выбран - сразу к дате
+        await proceed_to_date_selection_with_master(callback, state, config, selected_service)
+        await callback.answer()
+        return
 
     # Проверяем, включены ли мастера
     staff_enabled = config.get('staff', {}).get('enabled', False)
@@ -440,6 +486,30 @@ async def proceed_to_date_selection(callback: CallbackQuery, state: FSMContext, 
     else:
         # Без слотов - сразу имя
         await callback.message.edit_text(f"✅ {service['name']} — {service['price']}₽")
+        await callback.message.answer("Как вас зовут?", reply_markup=get_cancel_keyboard())
+        await state.set_state(BookingState.input_name)
+
+
+async def proceed_to_date_selection_with_master(callback: CallbackQuery, state: FSMContext, config: dict, service: dict):
+    """Переход к выбору даты с предвыбранным мастером"""
+    data = await state.get_data()
+    master_name = data.get('master_name', 'Мастер')
+
+    if config.get('features', {}).get('enable_slot_booking', True):
+        keyboard = generate_dates_keyboard(back_callback="cancel_booking_process")
+        await callback.message.edit_text(
+            f"✅ {service['name']} — {service['price']}₽\n"
+            f"👤 Мастер: {master_name}\n\n"
+            "Выберите дату:",
+            reply_markup=keyboard
+        )
+        await state.set_state(BookingState.choosing_date)
+    else:
+        # Без слотов - сразу имя
+        await callback.message.edit_text(
+            f"✅ {service['name']} — {service['price']}₽\n"
+            f"👤 Мастер: {master_name}"
+        )
         await callback.message.answer("Как вас зовут?", reply_markup=get_cancel_keyboard())
         await state.set_state(BookingState.input_name)
 

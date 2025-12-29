@@ -222,11 +222,12 @@ async def show_masters_list(message: Message, config: dict):
     for master in masters:
         master_name = master.get('name', 'Мастер')
         master_id = master.get('id', '')
-        position = master.get('position', '')
+        # Специализация хранится в specialization или role
+        specialization = master.get('specialization') or master.get('role', '')
 
         btn_text = f"👤 {master_name}"
-        if position:
-            btn_text += f" — {position}"
+        if specialization:
+            btn_text += f" — {specialization}"
 
         buttons.append([InlineKeyboardButton(
             text=btn_text,
@@ -314,11 +315,12 @@ async def callback_masters_list(callback: CallbackQuery, config: dict):
     for master in masters:
         master_name = master.get('name', 'Мастер')
         master_id = master.get('id', '')
-        position = master.get('position', '')
+        # Специализация хранится в specialization или role
+        specialization = master.get('specialization') or master.get('role', '')
 
         btn_text = f"👤 {master_name}"
-        if position:
-            btn_text += f" — {position}"
+        if specialization:
+            btn_text += f" — {specialization}"
 
         buttons.append([InlineKeyboardButton(
             text=btn_text,
