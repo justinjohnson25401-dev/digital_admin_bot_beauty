@@ -917,7 +917,7 @@ async def admin_help_handler(callback):
         "/start — Главное меню\n\n"
         "<b>Навигация:</b>\n"
         "Используйте кнопки внизу экрана или inline-меню для доступа к разделам.\n\n"
-        "По вопросам обращайтесь к разработчику."
+        "По вопросам обращайтесь к разработчику: @Oroani"
     )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -1120,7 +1120,7 @@ async def main():
             "⚙️ Настройки — настройки бизнеса и акции\n\n"
             "<b>Команды:</b>\n"
             "/start — Главное меню\n\n"
-            "По вопросам обращайтесь к разработчику."
+            "По вопросам обращайтесь к разработчику: @Oroani"
         )
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
