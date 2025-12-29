@@ -413,7 +413,14 @@ async def edit_master_list(callback: CallbackQuery, config: dict):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("edit_master_") & ~F.data.startswith("edit_master_list"))
+@router.callback_query(
+    F.data.startswith("edit_master_")
+    & ~F.data.startswith("edit_master_list")
+    & ~F.data.startswith("edit_master_name_")
+    & ~F.data.startswith("edit_master_role_")
+    & ~F.data.startswith("edit_master_services_")
+    & ~F.data.startswith("edit_master_schedule_")
+)
 async def edit_master_show(callback: CallbackQuery, config: dict):
     """Показать информацию о мастере для редактирования"""
 

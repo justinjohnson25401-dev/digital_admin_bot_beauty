@@ -36,6 +36,7 @@ from utils.config_manager import ConfigManager
 # Импортируем admin handlers
 from admin_handlers import services_editor, settings_editor
 from admin_handlers import business_settings, texts_editor, notifications_editor, staff_editor
+from admin_handlers import promotions_editor
 
 # Настройка логирования
 import logging.handlers
@@ -997,18 +998,13 @@ async def main():
     dp.update.middleware(PinMiddlewareInjector(pin_middleware))
 
     dp.update.middleware(ConfigMiddleware(config, db_manager, config_manager))
-    
-    # Подключаем роутеры для редактирования
-    dp.include_router(services_editor.router)
-    dp.include_router(settings_editor.router)
-    dp.include_router(business_settings.router)
-    dp.include_router(texts_editor.router)
-    dp.include_router(notifications_editor.router)
-    dp.include_router(staff_editor.router)
-    
-    # Обработчики кнопок постоянного меню
-    async def reply_stats_handler(message: Message, config: dict, db_manager):
+
+    # ==================== ОБРАБОТЧИКИ НИЖНЕЙ КЛАВИАТУРЫ ====================
+    # ВАЖНО: Регистрируем ДО подключения роутеров, чтобы они имели приоритет над FSM-хендлерами
+
+    async def reply_stats_handler(message: Message, state: FSMContext, config: dict, db_manager):
         """Обработчик кнопки Статистика"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
         from datetime import datetime
 
         stats_today = db_manager.get_stats('today')
@@ -1029,13 +1025,15 @@ async def main():
         )
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📊 Подробная статистика", callback_data="admin_stats")],
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
         ])
 
         await message.answer(text, reply_markup=keyboard)
 
-    async def reply_orders_handler(message: Message, config: dict, db_manager):
+    async def reply_orders_handler(message: Message, state: FSMContext, config: dict, db_manager):
         """Обработчик кнопки Заказы"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="📅 Сегодня", callback_data="admin_orders"),
@@ -1049,8 +1047,9 @@ async def main():
         ])
         await message.answer("📋 <b>Выберите период:</b>", reply_markup=keyboard)
 
-    async def reply_services_handler(message: Message, config_manager):
+    async def reply_services_handler(message: Message, state: FSMContext, config_manager):
         """Обработчик кнопки Услуги"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
         from admin_handlers.services_editor import get_services_keyboard
         config = config_manager.get_config()
         services = config.get('services', [])
@@ -1061,8 +1060,9 @@ async def main():
         keyboard = get_services_keyboard(services)
         await message.answer(text, reply_markup=keyboard)
 
-    async def reply_staff_handler(message: Message, config: dict):
+    async def reply_staff_handler(message: Message, state: FSMContext, config: dict):
         """Обработчик кнопки Персонал"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
         staff_data = config.get('staff', {})
         is_enabled = staff_data.get('enabled', False)
         masters = staff_data.get('masters', [])
@@ -1093,10 +1093,12 @@ async def main():
 
         await message.answer(text, reply_markup=keyboard)
 
-    async def reply_settings_handler(message: Message, config: dict):
+    async def reply_settings_handler(message: Message, state: FSMContext, config: dict):
         """Обработчик кнопки Настройки"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="business_settings")],
+            [InlineKeyboardButton(text="🎁 Акции", callback_data="promotions_menu")],
             [InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")],
             [InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu")],
             [InlineKeyboardButton(text="⚙️ Система", callback_data="admin_settings")],
@@ -1104,8 +1106,9 @@ async def main():
         ])
         await message.answer("⚙️ <b>Настройки</b>\n\nВыберите раздел:", reply_markup=keyboard)
 
-    async def reply_help_handler(message: Message):
+    async def reply_help_handler(message: Message, state: FSMContext):
         """Обработчик кнопки Помощь"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
         text = (
             "❓ <b>Помощь</b>\n\n"
             "<b>Кнопки меню:</b>\n"
@@ -1113,7 +1116,7 @@ async def main():
             "📅 Заказы — управление записями\n"
             "💼 Услуги — редактирование услуг\n"
             "👤 Персонал — управление мастерами\n"
-            "⚙️ Настройки — настройки бизнеса\n\n"
+            "⚙️ Настройки — настройки бизнеса и акции\n\n"
             "<b>Команды:</b>\n"
             "/start — Главное меню\n\n"
             "По вопросам обращайтесь к разработчику."
@@ -1125,11 +1128,7 @@ async def main():
 
         await message.answer(text, reply_markup=keyboard)
 
-    # Регистрируем handlers
-    dp.message.register(cmd_start_with_pin, Command("start"))
-    dp.message.register(process_pin, AdminPinStates.waiting_pin)
-
-    # Обработчики кнопок постоянного меню
+    # Регистрируем обработчики нижней клавиатуры ПЕРВЫМИ (до роутеров!)
     dp.message.register(reply_stats_handler, F.text == "📊 Статистика")
     dp.message.register(reply_orders_handler, F.text == "📅 Заказы")
     dp.message.register(reply_services_handler, F.text == "💼 Услуги")
@@ -1137,6 +1136,18 @@ async def main():
     dp.message.register(reply_settings_handler, F.text == "⚙️ Настройки")
     dp.message.register(reply_help_handler, F.text == "❓ Помощь")
 
+    # Подключаем роутеры для редактирования (ПОСЛЕ обработчиков нижней клавиатуры!)
+    dp.include_router(services_editor.router)
+    dp.include_router(settings_editor.router)
+    dp.include_router(business_settings.router)
+    dp.include_router(texts_editor.router)
+    dp.include_router(notifications_editor.router)
+    dp.include_router(staff_editor.router)
+    dp.include_router(promotions_editor.router)
+
+    # Регистрируем остальные handlers
+    dp.message.register(cmd_start_with_pin, Command("start"))
+    dp.message.register(process_pin, AdminPinStates.waiting_pin)
     dp.message.register(unknown_message, StateFilter(None), ~F.text.startswith("/"))
     
     # Callback handlers

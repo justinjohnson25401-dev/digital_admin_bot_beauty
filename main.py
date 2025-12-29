@@ -208,20 +208,25 @@ async def main():
     # Fallback для неизвестных сообщений (должен быть последним)
     from aiogram.filters import StateFilter
     from aiogram import F
-    
+
     known_menu_texts = {
-        # Новые кнопки главного меню
+        # Новые кнопки главного меню v2.0
+        "🏠 Меню",
+        "◀️ Назад",
         "📅 Записаться",
         "📋 Мои записи",
         "💅 Услуги и цены",
-        "📍 Адрес",
+        "👩‍🎨 Мастера",
+        "🎁 Акции",
+        "ℹ️ О нас",
         "❓ FAQ",
         # Старые кнопки (обратная совместимость)
+        "📍 Адрес",
         "📅 Записаться / Заказать",
         "❓ Часто задаваемые вопросы",
         "🏠 Главное меню",
     }
-    
+
     @dp.message(StateFilter(None), F.text, ~F.text.startswith("/"), ~F.text.in_(known_menu_texts))
     async def unknown_message_handler(message):
         """Обработчик неизвестных сообщений"""
