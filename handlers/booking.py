@@ -298,7 +298,7 @@ async def start_booking_with_master(message: Message, state: FSMContext, config:
                     text=f"📂 {cat}",
                     callback_data=f"cat:{cat}"
                 )])
-        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+        # Кнопка "Отменить" убрана - используется "◀️ Назад" в нижнем меню
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await message.answer(
@@ -338,7 +338,7 @@ async def show_services_list_filtered(message: Message, state: FSMContext, confi
         btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
 
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Кнопка "Отменить" убрана - используется "◀️ Назад" в нижнем меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.answer("Выберите услугу:", reply_markup=keyboard)
@@ -374,10 +374,11 @@ async def category_selected(callback: CallbackQuery, state: FSMContext, config: 
         btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
 
-    # Если запись с предвыбранным мастером - не показываем "К категориям"
+    # Если запись с предвыбранным мастером - не показываем "К категориям" и "Отменить"
     if not data.get('booking_with_preselected_master'):
         buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # При записи с предвыбранным мастером - "◀️ Назад" в нижнем меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(f"📂 {category}\n\nВыберите услугу:", reply_markup=keyboard)

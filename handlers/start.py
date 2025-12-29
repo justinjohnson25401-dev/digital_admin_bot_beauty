@@ -15,20 +15,20 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
     """Создание главной клавиатуры с навигацией"""
     buttons = [
         [
-            KeyboardButton(text="📅 Записаться"),
-            KeyboardButton(text="📋 Мои записи")
+            KeyboardButton(text="◀️ Назад"),
+            KeyboardButton(text="📅 Записаться")
         ],
         [
             KeyboardButton(text="💅 Услуги и цены"),
-            KeyboardButton(text="👩‍🎨 Мастера")
+            KeyboardButton(text="📋 Мои записи")
         ],
         [
-            KeyboardButton(text="🎁 Акции"),
-            KeyboardButton(text="ℹ️ О нас")
+            KeyboardButton(text="👩‍🎨 Мастера"),
+            KeyboardButton(text="🎁 Акции")
         ],
         [
-            KeyboardButton(text="❓ FAQ"),
-            KeyboardButton(text="◀️ Назад")
+            KeyboardButton(text="ℹ️ О нас"),
+            KeyboardButton(text="❓ FAQ")
         ],
     ]
 
@@ -64,10 +64,85 @@ async def cmd_menu(message: Message, state: FSMContext, config: dict):
 
 @router.message(F.text == "◀️ Назад")
 async def cmd_back(message: Message, state: FSMContext, config: dict):
-    """Кнопка Назад - возврат в главное меню (упрощённая версия)"""
-    # В будущем можно добавить историю навигации в state
-    await state.clear()
-    await message.answer("🏠 Главное меню:", reply_markup=get_main_keyboard())
+    """Кнопка Назад - возврат к предыдущему шагу или в главное меню"""
+    data = await state.get_data()
+    current_state = await state.get_state()
+
+    # Если есть история навигации - возвращаемся назад
+    nav_history = data.get('nav_history', [])
+
+    if nav_history:
+        # Возвращаемся к предыдущему экрану
+        prev_screen = nav_history.pop()
+        await state.update_data(nav_history=nav_history)
+
+        if prev_screen == 'masters_list':
+            # Возвращаемся к списку мастеров
+            await show_masters_list(message, config)
+            return
+        elif prev_screen == 'master_profile':
+            # Возвращаемся к профилю мастера
+            master_id = data.get('viewing_master_id')
+            if master_id:
+                from handlers.booking import get_master_by_id
+                master = get_master_by_id(config, master_id)
+                if master:
+                    await _show_master_profile_msg(message, config, master)
+                    return
+        elif prev_screen == 'services':
+            await message.answer("💅 Услуги и цены", reply_markup=get_main_keyboard())
+            await show_services_prices(message, config)
+            return
+
+    # Если нет истории или мы в процессе записи - отменяем запись и возвращаемся в меню
+    if current_state:
+        await state.clear()
+        await message.answer("❌ Действие отменено\n\n🏠 Главное меню:", reply_markup=get_main_keyboard())
+    else:
+        await message.answer("🏠 Главное меню:", reply_markup=get_main_keyboard())
+
+
+async def _show_master_profile_msg(message: Message, config: dict, master: dict):
+    """Показать профиль мастера (message версия для кнопки Назад)"""
+    name = master.get('name', 'Мастер')
+    position = master.get('position', '')
+    experience = master.get('experience', '')
+    specialization = master.get('specialization', '')
+    about = master.get('about', '')
+    master_services = master.get('services', [])
+    master_id = master.get('id', '')
+
+    text = f"👤 <b>{name}</b>\n"
+    if position:
+        text += f"{position}\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    if experience:
+        text += f"⭐ <b>Опыт:</b> {experience}\n"
+    if specialization:
+        text += f"💅 <b>Специализация:</b> {specialization}\n"
+    if about:
+        text += f"\n📝 <b>О мастере:</b>\n{about}\n"
+
+    if master_services:
+        all_services = config.get('services', [])
+        service_names = []
+        for svc_id in master_services:
+            svc = next((s for s in all_services if s.get('id') == svc_id), None)
+            if svc:
+                service_names.append(svc.get('name', svc_id))
+        if service_names:
+            text += f"\n🏷 <b>Услуги:</b> {', '.join(service_names)}\n"
+
+    text += "\n━━━━━━━━━━━━━━━━━━━━━━"
+
+    buttons = [
+        [InlineKeyboardButton(text=f"📅 Записаться к {name.split()[0]}", callback_data=f"book_master:{master_id}")],
+        [InlineKeyboardButton(text="◀️ Все мастера", callback_data="masters_list")]
+    ]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "main_menu")
@@ -239,7 +314,7 @@ async def show_masters_list(message: Message, config: dict):
 
 
 @router.callback_query(F.data.startswith("master_info:"))
-async def show_master_profile(callback: CallbackQuery, config: dict):
+async def show_master_profile(callback: CallbackQuery, state: FSMContext, config: dict):
     """Показ профиля мастера"""
     master_id = callback.data.replace("master_info:", "")
 
@@ -249,6 +324,12 @@ async def show_master_profile(callback: CallbackQuery, config: dict):
     if not master:
         await callback.answer("Мастер не найден", show_alert=True)
         return
+
+    # Сохраняем для навигации назад
+    data = await state.get_data()
+    nav_history = data.get('nav_history', [])
+    nav_history.append('masters_list')
+    await state.update_data(nav_history=nav_history, viewing_master_id=master_id)
 
     name = master.get('name', 'Мастер')
     position = master.get('position', '')
