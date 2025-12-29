@@ -247,6 +247,60 @@ async def start_booking(message: Message, state: FSMContext, config: dict):
     logger.info(f"User {message.from_user.id} started booking")
 
 
+async def start_booking_with_master(message: Message, state: FSMContext, config: dict, master_id: str):
+    """Начало записи с предвыбранным мастером"""
+    await state.clear()
+    await state.update_data(
+        fsm_started_at=time.time(),
+        booking_confirmed=False,
+        selected_master=master_id  # Мастер уже выбран
+    )
+
+    # Получаем данные мастера
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m.get('id') == master_id), None)
+
+    if not master:
+        await message.answer("Мастер не найден. Попробуйте снова.")
+        return
+
+    master_name = master.get('name', 'мастеру')
+    master_services = master.get('services', [])
+    all_services = config.get('services', [])
+
+    # Фильтруем услуги, которые может оказывать этот мастер
+    if master_services:
+        services = [s for s in all_services if s.get('id') in master_services]
+    else:
+        services = all_services
+
+    if not services:
+        await message.answer(f"К сожалению, у мастера {master_name} нет доступных услуг.")
+        return
+
+    # Показываем услуги мастера
+    categories = get_categories_from_services(services)
+
+    await message.answer(f"📅 Запись к мастеру: <b>{master_name}</b>\n\nВыберите услугу:", parse_mode="HTML")
+
+    if len(categories) > 1:
+        buttons = []
+        for cat in categories:
+            # Фильтруем услуги по категории
+            cat_services = [s for s in services if s.get('category', 'Другое') == cat]
+            if cat_services:
+                buttons.append([InlineKeyboardButton(
+                    text=f"📂 {cat}",
+                    callback_data=f"cat:{cat}"
+                )])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await message.answer("Выберите категорию:", reply_markup=keyboard)
+        await state.set_state(BookingState.choosing_category)
+    else:
+        await show_services_list(message, state, config, services)
+
+
 async def show_services_list(message: Message, state: FSMContext, config: dict, services: list):
     """Показать список услуг"""
     buttons = []

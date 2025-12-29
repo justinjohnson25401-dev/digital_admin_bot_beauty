@@ -15,10 +15,6 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
     """Создание главной клавиатуры с навигацией"""
     buttons = [
         [
-            KeyboardButton(text="🏠 Меню"),
-            KeyboardButton(text="◀️ Назад")
-        ],
-        [
             KeyboardButton(text="📅 Записаться"),
             KeyboardButton(text="📋 Мои записи")
         ],
@@ -30,7 +26,10 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
             KeyboardButton(text="🎁 Акции"),
             KeyboardButton(text="ℹ️ О нас")
         ],
-        [KeyboardButton(text="❓ FAQ")],
+        [
+            KeyboardButton(text="❓ FAQ"),
+            KeyboardButton(text="◀️ Назад")
+        ],
     ]
 
     return ReplyKeyboardMarkup(
@@ -255,7 +254,7 @@ async def show_master_profile(callback: CallbackQuery, config: dict):
     experience = master.get('experience', '')
     specialization = master.get('specialization', '')
     about = master.get('about', '')
-    services = master.get('services', [])
+    master_services = master.get('services', [])
 
     text = f"👤 <b>{name}</b>\n"
     if position:
@@ -268,9 +267,21 @@ async def show_master_profile(callback: CallbackQuery, config: dict):
         text += f"💅 <b>Специализация:</b> {specialization}\n"
     if about:
         text += f"\n📝 <b>О мастере:</b>\n{about}\n"
-    if services:
-        services_text = ", ".join(services) if isinstance(services, list) else services
-        text += f"\n🏷 <b>Услуги:</b> {services_text}\n"
+
+    # Получаем русские названия услуг из конфига
+    if master_services:
+        all_services = config.get('services', [])
+        service_names = []
+        for svc_id in master_services:
+            # Ищем услугу по ID
+            svc = next((s for s in all_services if s.get('id') == svc_id), None)
+            if svc:
+                service_names.append(svc.get('name', svc_id))
+            else:
+                # Если не нашли, показываем как есть (но не ID)
+                service_names.append(svc_id.replace('_', ' ').title())
+        if service_names:
+            text += f"\n🏷 <b>Услуги:</b> {', '.join(service_names)}\n"
 
     text += "\n━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -316,6 +327,27 @@ async def callback_masters_list(callback: CallbackQuery, config: dict):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("book_master:"))
+async def book_specific_master(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Начать запись к конкретному мастеру"""
+    master_id = callback.data.replace("book_master:", "")
+
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m.get('id') == master_id), None)
+
+    if not master:
+        await callback.answer("Мастер не найден", show_alert=True)
+        return
+
+    # Сохраняем выбранного мастера в state
+    await state.update_data(selected_master_id=master_id, selected_master_name=master.get('name'))
+
+    # Запускаем процесс записи с предвыбранным мастером
+    from handlers.booking import start_booking_with_master
+    await start_booking_with_master(callback.message, state, config, master_id)
     await callback.answer()
 
 
@@ -369,7 +401,8 @@ def get_developer_credit(config: dict) -> str:
     dev_config = config.get('bot_settings', {}).get('developer_credit', {})
     if dev_config.get('enabled', True):
         contact = dev_config.get('contact', '@Oroani')
-        return f"\n━━━━━━━━━━━━━━━━━━━━━━\n🤖 {contact}"
+        text = dev_config.get('text', 'Разработчик бота')
+        return f"\n━━━━━━━━━━━━━━━━━━━━━━\n🤖 {text}: {contact}"
     return ""
 
 
