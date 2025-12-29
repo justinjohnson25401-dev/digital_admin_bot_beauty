@@ -311,10 +311,9 @@ async def save_new_promotion(callback: CallbackQuery, state: FSMContext, config:
 
     config['promotions'].append(new_promo)
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = config['promotions']
-    editor.save()
+    editor.update_field('promotions', config['promotions'])
 
     config_manager.config['promotions'] = config['promotions']
 
@@ -405,10 +404,9 @@ async def toggle_promotion(callback: CallbackQuery, config: dict, config_manager
     current = promotions[promo_index].get('active', True)
     promotions[promo_index]['active'] = not current
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = promotions
-    editor.save()
+    editor.update_field('promotions', promotions)
 
     config_manager.config['promotions'] = promotions
 
@@ -475,10 +473,9 @@ async def delete_promotion(callback: CallbackQuery, config: dict, config_manager
     # Удаляем
     deleted = promotions.pop(promo_index)
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = promotions
-    editor.save()
+    editor.update_field('promotions', promotions)
 
     config_manager.config['promotions'] = promotions
 
@@ -522,10 +519,9 @@ async def save_edited_title(message: Message, state: FSMContext, config: dict, c
     promotions = config.get('promotions', [])
     promotions[promo_index]['title'] = title
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = promotions
-    editor.save()
+    editor.update_field('promotions', promotions)
 
     config_manager.config['promotions'] = promotions
 
@@ -573,10 +569,9 @@ async def save_edited_description(message: Message, state: FSMContext, config: d
     promotions = config.get('promotions', [])
     promotions[promo_index]['description'] = description
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = promotions
-    editor.save()
+    editor.update_field('promotions', promotions)
 
     config_manager.config['promotions'] = promotions
 
@@ -630,10 +625,9 @@ async def save_edited_emoji(callback: CallbackQuery, state: FSMContext, config: 
     promotions = config.get('promotions', [])
     promotions[promo_index]['emoji'] = emoji
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = promotions
-    editor.save()
+    editor.update_field('promotions', promotions)
 
     config_manager.config['promotions'] = promotions
 
@@ -675,10 +669,9 @@ async def save_permanent(callback: CallbackQuery, state: FSMContext, config: dic
     promotions[promo_index]['is_permanent'] = True
     promotions[promo_index]['valid_until'] = ""
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = promotions
-    editor.save()
+    editor.update_field('promotions', promotions)
 
     config_manager.config['promotions'] = promotions
 
@@ -704,10 +697,9 @@ async def save_end_month(callback: CallbackQuery, state: FSMContext, config: dic
     promotions[promo_index]['is_permanent'] = False
     promotions[promo_index]['valid_until'] = valid_until
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = promotions
-    editor.save()
+    editor.update_field('promotions', promotions)
 
     config_manager.config['promotions'] = promotions
 
@@ -730,10 +722,9 @@ async def save_2weeks(callback: CallbackQuery, state: FSMContext, config: dict, 
     promotions[promo_index]['is_permanent'] = False
     promotions[promo_index]['valid_until'] = valid_until
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = promotions
-    editor.save()
+    editor.update_field('promotions', promotions)
 
     config_manager.config['promotions'] = promotions
 
@@ -756,10 +747,9 @@ async def save_1month(callback: CallbackQuery, state: FSMContext, config: dict, 
     promotions[promo_index]['is_permanent'] = False
     promotions[promo_index]['valid_until'] = valid_until
 
-    # Сохраняем
+    # Сохраняем через update_field (правильный метод)
     editor = get_config_editor(config)
-    editor.config['promotions'] = promotions
-    editor.save()
+    editor.update_field('promotions', promotions)
 
     config_manager.config['promotions'] = promotions
 
