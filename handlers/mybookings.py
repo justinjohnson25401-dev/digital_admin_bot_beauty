@@ -77,7 +77,6 @@ def _format_bookings_list(bookings: list, config: dict = None) -> tuple[str, Inl
             )
         ])
 
-    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     return text, keyboard
@@ -271,7 +270,6 @@ async def edit_booking_menu(callback: CallbackQuery, state: FSMContext, db_manag
         [InlineKeyboardButton(text="🔄 Изменить услугу",
                              callback_data=f"edit_service_existing:{order_id}")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_mybookings")],
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
     ])
 
     # Форматирование времени
@@ -403,7 +401,6 @@ async def edit_service_existing_start(callback: CallbackQuery, state: FSMContext
         buttons.append([InlineKeyboardButton(text=button_text, callback_data=callback_data)])
 
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_booking:{order_id}")])
-    buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text("Выберите новую услугу:", reply_markup=keyboard)
