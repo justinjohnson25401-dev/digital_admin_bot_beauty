@@ -67,7 +67,6 @@ async def show_staff_menu(callback: CallbackQuery, config: dict, state: FSMConte
         [InlineKeyboardButton(text="✏️ Редактировать мастера", callback_data="edit_master_list")],
         [InlineKeyboardButton(text="📅 Закрытые даты", callback_data="closed_dates_menu")],
         [InlineKeyboardButton(text="🗑 Удалить мастера", callback_data="delete_master_list")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -357,7 +356,6 @@ async def apply_schedule_template(callback: CallbackQuery, state: FSMContext, co
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
         ])
 
         await callback.message.edit_text(text, reply_markup=keyboard)
@@ -512,7 +510,6 @@ async def edit_master_name_save(message: Message, state: FSMContext, config: dic
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -570,7 +567,6 @@ async def edit_master_role_save(message: Message, state: FSMContext, config: dic
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -1067,7 +1063,6 @@ async def save_closed_with_reason(message: Message, state: FSMContext, config: d
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📅 К закрытым датам", callback_data=f"closed_dates_{master_id}")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 

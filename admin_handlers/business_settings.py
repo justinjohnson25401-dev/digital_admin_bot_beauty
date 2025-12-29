@@ -49,7 +49,6 @@ async def show_business_settings(callback: CallbackQuery, config: dict):
         [InlineKeyboardButton(text="🕐 Изменить время начала", callback_data="edit_work_start")],
         [InlineKeyboardButton(text="🕑 Изменить время конца", callback_data="edit_work_end")],
         [InlineKeyboardButton(text="⏱ Изменить слот", callback_data="edit_slot_duration")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -107,7 +106,6 @@ async def save_business_name(message: Message, state: FSMContext, config: dict, 
     # Показать настройки
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚙️ К настройкам", callback_data="business_settings")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -170,7 +168,6 @@ async def save_work_start(message: Message, state: FSMContext, config: dict, con
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚙️ К настройкам", callback_data="business_settings")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -233,7 +230,6 @@ async def save_work_end(message: Message, state: FSMContext, config: dict, confi
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚙️ К настройкам", callback_data="business_settings")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 

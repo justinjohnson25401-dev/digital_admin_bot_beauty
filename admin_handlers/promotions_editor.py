@@ -328,7 +328,6 @@ async def save_new_promotion(callback: CallbackQuery, state: FSMContext, config:
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎁 К акциям", callback_data="promotions_menu")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -530,7 +529,6 @@ async def save_edited_title(message: Message, state: FSMContext, config: dict, c
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎁 К акциям", callback_data="promotions_menu")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -580,7 +578,6 @@ async def save_edited_description(message: Message, state: FSMContext, config: d
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎁 К акциям", callback_data="promotions_menu")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
