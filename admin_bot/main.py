@@ -183,12 +183,13 @@ class ConfigMiddleware(BaseMiddleware):
 
 
 def get_admin_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Постоянная клавиатура админ-панели"""
+    """Постоянная клавиатура админ-панели (стиль как в клиент-боте)"""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="📅 Заказы")],
-            [KeyboardButton(text="💼 Услуги"), KeyboardButton(text="👤 Персонал")],
-            [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="❓ Помощь")]
+            [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="📊 Статистика")],
+            [KeyboardButton(text="📅 Заказы"), KeyboardButton(text="💼 Услуги")],
+            [KeyboardButton(text="👤 Персонал"), KeyboardButton(text="⚙️ Настройки")],
+            [KeyboardButton(text="🎁 Акции"), KeyboardButton(text="❓ Помощь")]
         ],
         resize_keyboard=True
     )
@@ -1128,12 +1129,59 @@ async def main():
 
         await message.answer(text, reply_markup=keyboard)
 
+    async def reply_back_handler(message: Message, state: FSMContext, config: dict, db_manager):
+        """Обработчик кнопки Назад - возврат в главное меню"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
+        business_name = config.get('business_name', 'Ваш бизнес')
+        stats = db_manager.get_stats('today')
+
+        text = (
+            f"🎯 <b>Админ-панель \"{business_name}\"</b>\n\n"
+            f"📅 Сегодня:\n"
+            f"├ Заказов: {stats['total_orders']}\n"
+            f"├ Выручка: {stats['total_revenue']}₽\n"
+            f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
+            "Выберите действие:"
+        )
+
+        keyboard = get_main_menu_keyboard()
+        await message.answer(text, reply_markup=keyboard)
+
+    async def reply_promotions_handler(message: Message, state: FSMContext, config: dict):
+        """Обработчик кнопки Акции"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
+        promotions = config.get('promotions', [])
+
+        text = "🎁 <b>УПРАВЛЕНИЕ АКЦИЯМИ</b>\n\n"
+
+        if promotions:
+            text += f"Активных акций: {len([p for p in promotions if p.get('active', True)])}\n"
+            text += f"Всего акций: {len(promotions)}\n\n"
+
+            for i, promo in enumerate(promotions):
+                status = "✅" if promo.get('active', True) else "❌"
+                emoji = promo.get('emoji', '🎁')
+                title = promo.get('title', 'Без названия')
+                text += f"{status} {emoji} {title}\n"
+        else:
+            text += "<i>Акции ещё не добавлены</i>\n"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить акцию", callback_data="add_promotion")],
+            [InlineKeyboardButton(text="📋 Управлять акциями", callback_data="promotions_menu")],
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
+        ])
+
+        await message.answer(text, reply_markup=keyboard)
+
     # Регистрируем обработчики нижней клавиатуры ПЕРВЫМИ (до роутеров!)
+    dp.message.register(reply_back_handler, F.text == "◀️ Назад")
     dp.message.register(reply_stats_handler, F.text == "📊 Статистика")
     dp.message.register(reply_orders_handler, F.text == "📅 Заказы")
     dp.message.register(reply_services_handler, F.text == "💼 Услуги")
     dp.message.register(reply_staff_handler, F.text == "👤 Персонал")
     dp.message.register(reply_settings_handler, F.text == "⚙️ Настройки")
+    dp.message.register(reply_promotions_handler, F.text == "🎁 Акции")
     dp.message.register(reply_help_handler, F.text == "❓ Помощь")
 
     # Подключаем роутеры для редактирования (ПОСЛЕ обработчиков нижней клавиатуры!)
