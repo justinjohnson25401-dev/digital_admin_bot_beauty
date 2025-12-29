@@ -65,6 +65,13 @@ async def cmd_menu(message: Message, state: FSMContext, config: dict):
 @router.message(F.text == "◀️ Назад")
 async def cmd_back(message: Message, state: FSMContext, config: dict):
     """Кнопка Назад - возврат к предыдущему шагу или в главное меню"""
+    from states.booking import BookingState
+    from handlers.booking import (
+        get_categories_from_services, get_services_by_category,
+        get_masters_for_service, generate_dates_keyboard,
+        get_master_by_id
+    )
+
     data = await state.get_data()
     current_state = await state.get_state()
 
@@ -77,14 +84,11 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
         await state.update_data(nav_history=nav_history)
 
         if prev_screen == 'masters_list':
-            # Возвращаемся к списку мастеров
             await show_masters_list(message, config)
             return
         elif prev_screen == 'master_profile':
-            # Возвращаемся к профилю мастера
             master_id = data.get('viewing_master_id')
             if master_id:
-                from handlers.booking import get_master_by_id
                 master = get_master_by_id(config, master_id)
                 if master:
                     await _show_master_profile_msg(message, config, master)
@@ -94,8 +98,120 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
             await show_services_prices(message, config)
             return
 
-    # Если нет истории или мы в процессе записи - отменяем запись и возвращаемся в меню
+    # Обработка состояний записи (BookingState)
     if current_state:
+        services = config.get('services', [])
+        categories = get_categories_from_services(services)
+
+        # choosing_service → choosing_category (или главное меню)
+        if current_state == BookingState.choosing_service.state:
+            if len(categories) > 1:
+                # Возвращаемся к категориям
+                buttons = []
+                for cat in categories:
+                    buttons.append([InlineKeyboardButton(
+                        text=f"📂 {cat}",
+                        callback_data=f"cat:{cat}"
+                    )])
+                buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+                keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+                await message.answer("Выберите категорию услуг:", reply_markup=keyboard)
+                await state.set_state(BookingState.choosing_category)
+                return
+            else:
+                # Одна категория - выходим в меню
+                await state.clear()
+                await message.answer("🏠 Главное меню:", reply_markup=get_main_keyboard())
+                return
+
+        # choosing_category → главное меню
+        elif current_state == BookingState.choosing_category.state:
+            await state.clear()
+            await message.answer("🏠 Главное меню:", reply_markup=get_main_keyboard())
+            return
+
+        # choosing_master → choosing_service
+        elif current_state == BookingState.choosing_master.state:
+            category = data.get('selected_category')
+            if category:
+                cat_services = get_services_by_category(services, category)
+            else:
+                cat_services = services
+
+            buttons = []
+            for svc in cat_services:
+                duration = svc.get('duration', 0)
+                dur_text = f" • {duration}мин" if duration else ""
+                btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
+                buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
+            buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
+            buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+
+            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+            title = f"📂 {category}\n\n" if category else ""
+            await message.answer(f"{title}Выберите услугу:", reply_markup=keyboard)
+            await state.set_state(BookingState.choosing_service)
+            return
+
+        # choosing_date → choosing_master (или choosing_service)
+        elif current_state == BookingState.choosing_date.state:
+            service_id = data.get('service_id')
+            staff_enabled = config.get('staff', {}).get('enabled', False)
+            masters = get_masters_for_service(config, service_id) if staff_enabled else []
+
+            if masters and not data.get('booking_with_preselected_master'):
+                # Возвращаемся к выбору мастера
+                buttons = []
+                for master in masters:
+                    spec = master.get('specialization') or master.get('role', '')
+                    spec_text = f" ({spec})" if spec else ""
+                    buttons.append([InlineKeyboardButton(
+                        text=f"👤 {master['name']}{spec_text}",
+                        callback_data=f"master:{master['id']}"
+                    )])
+                buttons.append([InlineKeyboardButton(text="👥 Любой свободный мастер", callback_data="master:any")])
+                buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_services")])
+                buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+
+                keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+                await message.answer(
+                    f"✅ {data.get('service_name')} — {data.get('price')}₽\n\nВыберите мастера:",
+                    reply_markup=keyboard
+                )
+                await state.set_state(BookingState.choosing_master)
+                return
+            else:
+                # Возвращаемся к услугам
+                category = data.get('selected_category')
+                if category:
+                    cat_services = get_services_by_category(services, category)
+                else:
+                    cat_services = services
+
+                buttons = []
+                for svc in cat_services:
+                    duration = svc.get('duration', 0)
+                    dur_text = f" • {duration}мин" if duration else ""
+                    btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
+                    buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
+                buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
+                buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+
+                keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+                await message.answer("Выберите услугу:", reply_markup=keyboard)
+                await state.set_state(BookingState.choosing_service)
+                return
+
+        # choosing_time → choosing_date
+        elif current_state == BookingState.choosing_time.state:
+            master_id = data.get('master_id')
+            back_cb = "back_to_masters" if data.get('master_name') and not data.get('booking_with_preselected_master') else "back_to_services"
+            keyboard = generate_dates_keyboard(back_callback=back_cb, config=config, master_id=master_id)
+            await message.answer("Выберите дату:", reply_markup=keyboard)
+            await state.set_state(BookingState.choosing_date)
+            return
+
+        # Остальные состояния - отмена записи
         await state.clear()
         await message.answer("❌ Действие отменено\n\n🏠 Главное меню:", reply_markup=get_main_keyboard())
     else:
