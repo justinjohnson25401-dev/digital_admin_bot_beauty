@@ -137,8 +137,7 @@ def generate_dates_keyboard(back_callback: str = "back_to_masters", config: dict
                 callback_data=f"date:{date.isoformat()}"
             )])
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=back_callback)])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню - inline кнопки не нужны
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -211,8 +210,7 @@ def generate_time_slots_keyboard(config: dict, db_manager, booking_date: str,
         # ИСПРАВЛЕНО: Увеличиваем на slot_duration минут
         current_minutes += slot_duration
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_dates")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню - inline кнопки не нужны
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -280,7 +278,7 @@ async def start_booking_flow(message: Message, state: FSMContext, config: dict):
                 text=f"📂 {cat}",
                 callback_data=f"cat:{cat}"
             )])
-        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+        # Навигация через нижнее меню
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await message.answer("Выберите категорию услуг:", reply_markup=keyboard)
@@ -371,8 +369,7 @@ async def show_services_list(message: Message, state: FSMContext, config: dict, 
         btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_categories")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.answer("Выберите услугу:", reply_markup=keyboard)
@@ -424,11 +421,7 @@ async def category_selected(callback: CallbackQuery, state: FSMContext, config: 
         btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
 
-    # Если запись с предвыбранным мастером - не показываем "К категориям" и "Отменить"
-    if not data.get('booking_with_preselected_master'):
-        buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
-        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
-    # При записи с предвыбранным мастером - "◀️ Назад" в нижнем меню
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(f"📂 {category}\n\nВыберите услугу:", reply_markup=keyboard)
@@ -449,7 +442,7 @@ async def back_to_categories(callback: CallbackQuery, state: FSMContext, config:
     buttons = []
     for cat in categories:
         buttons.append([InlineKeyboardButton(text=f"📂 {cat}", callback_data=f"cat:{cat}")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text("Выберите категорию услуг:", reply_markup=keyboard)
@@ -506,8 +499,7 @@ async def service_selected(callback: CallbackQuery, state: FSMContext, config: d
             text="👥 Любой свободный мастер",
             callback_data="master:any"
         )])
-        buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_services")])
-        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+        # Навигация через нижнее меню
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.edit_text(
@@ -622,8 +614,7 @@ async def back_to_masters(callback: CallbackQuery, state: FSMContext, config: di
             callback_data=f"master:{master['id']}"
         )])
     buttons.append([InlineKeyboardButton(text="👥 Любой свободный мастер", callback_data="master:any")])
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_services")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(
@@ -652,8 +643,7 @@ async def back_to_services(callback: CallbackQuery, state: FSMContext, config: d
         btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
 
-    buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     title = f"📂 {category}\n\n" if category else ""

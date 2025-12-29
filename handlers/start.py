@@ -113,7 +113,6 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
                         text=f"📂 {cat}",
                         callback_data=f"cat:{cat}"
                     )])
-                buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
                 keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
                 await message.answer("Выберите категорию услуг:", reply_markup=keyboard)
                 await state.set_state(BookingState.choosing_category)
@@ -144,8 +143,6 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
                 dur_text = f" • {duration}мин" if duration else ""
                 btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
                 buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
-            buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
-            buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
             title = f"📂 {category}\n\n" if category else ""
@@ -170,8 +167,6 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
                         callback_data=f"master:{master['id']}"
                     )])
                 buttons.append([InlineKeyboardButton(text="👥 Любой свободный мастер", callback_data="master:any")])
-                buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_services")])
-                buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
                 await message.answer(
@@ -194,8 +189,6 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
                     dur_text = f" • {duration}мин" if duration else ""
                     btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
                     buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
-                buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
-                buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
                 await message.answer("Выберите услугу:", reply_markup=keyboard)
@@ -205,8 +198,7 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
         # choosing_time → choosing_date
         elif current_state == BookingState.choosing_time.state:
             master_id = data.get('master_id')
-            back_cb = "back_to_masters" if data.get('master_name') and not data.get('booking_with_preselected_master') else "back_to_services"
-            keyboard = generate_dates_keyboard(back_callback=back_cb, config=config, master_id=master_id)
+            keyboard = generate_dates_keyboard(config=config, master_id=master_id)
             await message.answer("Выберите дату:", reply_markup=keyboard)
             await state.set_state(BookingState.choosing_date)
             return
@@ -715,14 +707,8 @@ async def handle_faq_callback(callback: CallbackQuery, config: dict):
         work_end = int(booking.get('work_end', 20))
         answer = f"🕐 <b>Мы работаем:</b>\nЕжедневно: {work_start:02d}:00 – {work_end:02d}:00"
 
-    # Кнопки навигации после ответа FAQ
-    nav_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 К списку вопросов", callback_data="faq_menu")],
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
-    ])
-
-    # Используем edit_text вместо answer для единого окна
-    await callback.message.edit_text(answer, reply_markup=nav_keyboard, parse_mode="HTML")
+    # Навигация через нижнее меню - inline кнопки не нужны
+    await callback.message.edit_text(answer, parse_mode="HTML")
     await callback.answer()
 
 
