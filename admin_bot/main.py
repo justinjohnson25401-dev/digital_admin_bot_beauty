@@ -183,12 +183,13 @@ class ConfigMiddleware(BaseMiddleware):
 
 
 def get_admin_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Постоянная клавиатура админ-панели"""
+    """Постоянная клавиатура админ-панели (стиль как в клиент-боте)"""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="📅 Заказы")],
-            [KeyboardButton(text="💼 Услуги"), KeyboardButton(text="👤 Персонал")],
-            [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="❓ Помощь")]
+            [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="📊 Статистика")],
+            [KeyboardButton(text="📅 Заказы"), KeyboardButton(text="💼 Услуги")],
+            [KeyboardButton(text="👤 Персонал"), KeyboardButton(text="⚙️ Настройки")],
+            [KeyboardButton(text="🎁 Акции"), KeyboardButton(text="❓ Помощь")]
         ],
         resize_keyboard=True
     )
@@ -441,11 +442,7 @@ async def admin_stats_handler(callback, config: dict, db_manager):
             if top_day:
                 text += "  └ " + ", ".join([f"{s} ({c})" for s, c in top_day]) + "\n"
     
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
-    ])
-    
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text)
     await callback.answer()
 
 
@@ -513,9 +510,6 @@ async def admin_client_history_handler(callback, config: dict, db_manager):
     ])
     keyboard_rows.append([
         InlineKeyboardButton(text="🔙 Назад к списку", callback_data=f"admin_orders_page:{return_period}:{return_page}")
-    ])
-    keyboard_rows.append([
-        InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")
     ])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
@@ -588,7 +582,6 @@ async def admin_order_detail_handler(callback, config: dict, db_manager):
     if history_btn:
         keyboard_rows.append([history_btn])
     keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад к списку", callback_data=f"admin_orders_page:{period}:{page}")])
-    keyboard_rows.append([InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -794,7 +787,6 @@ async def _admin_orders_render(callback, db_manager, config: dict, period: str, 
             InlineKeyboardButton(text="📆 Все будущие", callback_data="admin_orders_all_future"),
         ],
         [InlineKeyboardButton(text="📥 Выгрузить CSV", callback_data="admin_export_csv")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
@@ -824,7 +816,6 @@ async def admin_export_csv_handler(callback, config: dict, db_manager):
             try:
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🔙 К записям", callback_data="admin_orders")],
-                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="admin_main")]
                 ])
                 await callback.message.edit_text(
                     "✅ CSV файл отправлен выше 👆",
@@ -892,11 +883,7 @@ async def admin_clients_handler(callback, config: dict, db_manager):
             text += f"   Телефон: {last_phone}\n"
         text += "\n"
     
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
-    ])
-    
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text)
     await callback.answer()
 
 
@@ -916,14 +903,10 @@ async def admin_help_handler(callback):
         "/start — Главное меню\n\n"
         "<b>Навигация:</b>\n"
         "Используйте кнопки внизу экрана или inline-меню для доступа к разделам.\n\n"
-        "По вопросам обращайтесь к разработчику."
+        "По вопросам обращайтесь к разработчику: @Oroani"
     )
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
-    ])
-    
-    await callback.message.edit_text(text, reply_markup=keyboard)
+
+    await callback.message.edit_text(text)
     await callback.answer()
 
 
@@ -1026,7 +1009,6 @@ async def main():
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Подробная статистика", callback_data="admin_stats")],
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
         ])
 
         await message.answer(text, reply_markup=keyboard)
@@ -1043,7 +1025,6 @@ async def main():
                 InlineKeyboardButton(text="📅 Эта неделя", callback_data="admin_orders_week"),
                 InlineKeyboardButton(text="📆 Все будущие", callback_data="admin_orders_all_future"),
             ],
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
         ])
         await message.answer("📋 <b>Выберите период:</b>", reply_markup=keyboard)
 
@@ -1088,7 +1069,6 @@ async def main():
             [InlineKeyboardButton(text="✏️ Редактировать мастера", callback_data="edit_master_list")],
             [InlineKeyboardButton(text="📅 Закрытые даты", callback_data="closed_dates_menu")],
             [InlineKeyboardButton(text="🗑 Удалить мастера", callback_data="delete_master_list")],
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
         ])
 
         await message.answer(text, reply_markup=keyboard)
@@ -1102,7 +1082,6 @@ async def main():
             [InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")],
             [InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu")],
             [InlineKeyboardButton(text="⚙️ Система", callback_data="admin_settings")],
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
         ])
         await message.answer("⚙️ <b>Настройки</b>\n\nВыберите раздел:", reply_markup=keyboard)
 
@@ -1119,21 +1098,63 @@ async def main():
             "⚙️ Настройки — настройки бизнеса и акции\n\n"
             "<b>Команды:</b>\n"
             "/start — Главное меню\n\n"
-            "По вопросам обращайтесь к разработчику."
+            "По вопросам обращайтесь к разработчику: @Oroani"
         )
 
+        await message.answer(text)
+
+    async def reply_back_handler(message: Message, state: FSMContext, config: dict, db_manager):
+        """Обработчик кнопки Назад - возврат в главное меню"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
+        business_name = config.get('business_name', 'Ваш бизнес')
+        stats = db_manager.get_stats('today')
+
+        text = (
+            f"🎯 <b>Админ-панель \"{business_name}\"</b>\n\n"
+            f"📅 Сегодня:\n"
+            f"├ Заказов: {stats['total_orders']}\n"
+            f"├ Выручка: {stats['total_revenue']}₽\n"
+            f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
+            "Выберите действие:"
+        )
+
+        keyboard = get_main_menu_keyboard()
+        await message.answer(text, reply_markup=keyboard)
+
+    async def reply_promotions_handler(message: Message, state: FSMContext, config: dict):
+        """Обработчик кнопки Акции"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
+        promotions = config.get('promotions', [])
+
+        text = "🎁 <b>УПРАВЛЕНИЕ АКЦИЯМИ</b>\n\n"
+
+        if promotions:
+            text += f"Активных акций: {len([p for p in promotions if p.get('active', True)])}\n"
+            text += f"Всего акций: {len(promotions)}\n\n"
+
+            for i, promo in enumerate(promotions):
+                status = "✅" if promo.get('active', True) else "❌"
+                emoji = promo.get('emoji', '🎁')
+                title = promo.get('title', 'Без названия')
+                text += f"{status} {emoji} {title}\n"
+        else:
+            text += "<i>Акции ещё не добавлены</i>\n"
+
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")]
+            [InlineKeyboardButton(text="➕ Добавить акцию", callback_data="add_promotion")],
+            [InlineKeyboardButton(text="📋 Управлять акциями", callback_data="promotions_menu")],
         ])
 
         await message.answer(text, reply_markup=keyboard)
 
     # Регистрируем обработчики нижней клавиатуры ПЕРВЫМИ (до роутеров!)
+    dp.message.register(reply_back_handler, F.text == "◀️ Назад")
     dp.message.register(reply_stats_handler, F.text == "📊 Статистика")
     dp.message.register(reply_orders_handler, F.text == "📅 Заказы")
     dp.message.register(reply_services_handler, F.text == "💼 Услуги")
     dp.message.register(reply_staff_handler, F.text == "👤 Персонал")
     dp.message.register(reply_settings_handler, F.text == "⚙️ Настройки")
+    dp.message.register(reply_promotions_handler, F.text == "🎁 Акции")
     dp.message.register(reply_help_handler, F.text == "❓ Помощь")
 
     # Подключаем роутеры для редактирования (ПОСЛЕ обработчиков нижней клавиатуры!)

@@ -68,9 +68,6 @@ async def show_settings(callback: CallbackQuery, config_manager):
         [
             InlineKeyboardButton(text="📋 Управление услугами", callback_data="admin_services")
         ],
-        [
-            InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")
-        ]
     ])
     
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -345,7 +342,6 @@ async def process_edit_hours(message: Message, state: FSMContext, config_manager
     if success:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 К настройкам", callback_data="admin_settings")],
-            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
         ])
         await message.answer(
             f"✅ График изменён:\n"

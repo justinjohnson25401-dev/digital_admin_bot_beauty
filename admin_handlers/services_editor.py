@@ -39,9 +39,6 @@ def get_services_keyboard(services: list) -> InlineKeyboardMarkup:
     buttons.append([
         InlineKeyboardButton(text="➕ Добавить услугу", callback_data="service_add")
     ])
-    buttons.append([
-        InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")
-    ])
     
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

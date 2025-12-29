@@ -51,7 +51,6 @@ async def show_texts_menu(callback: CallbackQuery, config: dict):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💬 Сообщения бота", callback_data="texts_messages")],
         [InlineKeyboardButton(text="❓ FAQ (Частые вопросы)", callback_data="texts_faq")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -158,7 +157,6 @@ async def save_message_text(message: Message, state: FSMContext, config: dict, c
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💬 К сообщениям", callback_data="texts_messages")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -279,7 +277,6 @@ async def faq_add_answer(message: Message, state: FSMContext, config: dict, conf
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❓ К FAQ", callback_data="texts_faq")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -414,7 +411,6 @@ async def faq_edit_button_save(message: Message, state: FSMContext, config: dict
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❓ К FAQ", callback_data="texts_faq")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
@@ -480,7 +476,6 @@ async def faq_edit_answer_save(message: Message, state: FSMContext, config: dict
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❓ К FAQ", callback_data="texts_faq")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")],
     ])
     await message.answer("Выберите действие:", reply_markup=keyboard)
 

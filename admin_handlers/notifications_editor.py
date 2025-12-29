@@ -62,8 +62,6 @@ async def show_notifications_menu(callback: CallbackQuery, config: dict):
             )
         ])
 
-    keyboard_rows.append([InlineKeyboardButton(text="🔙 Главное меню", callback_data="admin_main")])
-
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
     await callback.message.edit_text(text, reply_markup=keyboard)

@@ -64,31 +64,80 @@ def get_comment_choice_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def generate_dates_keyboard(back_callback: str = "back_to_masters") -> InlineKeyboardMarkup:
+def is_date_closed_for_master(config: dict, master_id: str, date_obj) -> tuple:
+    """Проверить, закрыта ли дата для мастера.
+
+    Возвращает: (is_closed: bool, reason: str or None)
+    """
+    if not master_id:
+        return False, None
+
+    master = get_master_by_id(config, master_id)
+    if not master:
+        return False, None
+
+    date_str = date_obj.isoformat() if hasattr(date_obj, 'isoformat') else str(date_obj)
+
+    for closed in master.get('closed_dates', []):
+        if closed.get('date') == date_str:
+            return True, closed.get('reason', '')
+
+    return False, None
+
+
+def generate_dates_keyboard(back_callback: str = "back_to_masters", config: dict = None, master_id: str = None) -> InlineKeyboardMarkup:
+    """Генерация клавиатуры с датами.
+
+    Если указан master_id - закрытые даты мастера будут помечены как недоступные.
+    """
     buttons = []
     today = datetime.now().date()
 
-    buttons.append([InlineKeyboardButton(
-        text=f"📅 Сегодня ({today.strftime('%d.%m')})",
-        callback_data=f"date:{today.isoformat()}"
-    )])
+    # Сегодня
+    is_closed, reason = is_date_closed_for_master(config, master_id, today) if config else (False, None)
+    if is_closed:
+        buttons.append([InlineKeyboardButton(
+            text=f"🚫 Сегодня ({today.strftime('%d.%m')}) - закрыто",
+            callback_data="date_closed"
+        )])
+    else:
+        buttons.append([InlineKeyboardButton(
+            text=f"📅 Сегодня ({today.strftime('%d.%m')})",
+            callback_data=f"date:{today.isoformat()}"
+        )])
 
+    # Завтра
     tomorrow = today + timedelta(days=1)
-    buttons.append([InlineKeyboardButton(
-        text=f"📅 Завтра ({tomorrow.strftime('%d.%m')})",
-        callback_data=f"date:{tomorrow.isoformat()}"
-    )])
+    is_closed, reason = is_date_closed_for_master(config, master_id, tomorrow) if config else (False, None)
+    if is_closed:
+        buttons.append([InlineKeyboardButton(
+            text=f"🚫 Завтра ({tomorrow.strftime('%d.%m')}) - закрыто",
+            callback_data="date_closed"
+        )])
+    else:
+        buttons.append([InlineKeyboardButton(
+            text=f"📅 Завтра ({tomorrow.strftime('%d.%m')})",
+            callback_data=f"date:{tomorrow.isoformat()}"
+        )])
 
+    # Следующие 5 дней
     for i in range(2, 7):
         date = today + timedelta(days=i)
         day_name = DAYS_RU.get(date.strftime('%A'), date.strftime('%a'))
-        buttons.append([InlineKeyboardButton(
-            text=f"{day_name} {date.strftime('%d.%m')}",
-            callback_data=f"date:{date.isoformat()}"
-        )])
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data=back_callback)])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+        is_closed, reason = is_date_closed_for_master(config, master_id, date) if config else (False, None)
+        if is_closed:
+            buttons.append([InlineKeyboardButton(
+                text=f"🚫 {day_name} {date.strftime('%d.%m')} - закрыто",
+                callback_data="date_closed"
+            )])
+        else:
+            buttons.append([InlineKeyboardButton(
+                text=f"{day_name} {date.strftime('%d.%m')}",
+                callback_data=f"date:{date.isoformat()}"
+            )])
+
+    # Навигация через нижнее меню - inline кнопки не нужны
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -161,8 +210,7 @@ def generate_time_slots_keyboard(config: dict, db_manager, booking_date: str,
         # ИСПРАВЛЕНО: Увеличиваем на slot_duration минут
         current_minutes += slot_duration
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_dates")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню - inline кнопки не нужны
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -230,7 +278,7 @@ async def start_booking_flow(message: Message, state: FSMContext, config: dict):
                 text=f"📂 {cat}",
                 callback_data=f"cat:{cat}"
             )])
-        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+        # Навигация через нижнее меню
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await message.answer("Выберите категорию услуг:", reply_markup=keyboard)
@@ -321,8 +369,7 @@ async def show_services_list(message: Message, state: FSMContext, config: dict, 
         btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_categories")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.answer("Выберите услугу:", reply_markup=keyboard)
@@ -374,11 +421,7 @@ async def category_selected(callback: CallbackQuery, state: FSMContext, config: 
         btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
 
-    # Если запись с предвыбранным мастером - не показываем "К категориям" и "Отменить"
-    if not data.get('booking_with_preselected_master'):
-        buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
-        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
-    # При записи с предвыбранным мастером - "◀️ Назад" в нижнем меню
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(f"📂 {category}\n\nВыберите услугу:", reply_markup=keyboard)
@@ -399,7 +442,7 @@ async def back_to_categories(callback: CallbackQuery, state: FSMContext, config:
     buttons = []
     for cat in categories:
         buttons.append([InlineKeyboardButton(text=f"📂 {cat}", callback_data=f"cat:{cat}")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text("Выберите категорию услуг:", reply_markup=keyboard)
@@ -456,8 +499,7 @@ async def service_selected(callback: CallbackQuery, state: FSMContext, config: d
             text="👥 Любой свободный мастер",
             callback_data="master:any"
         )])
-        buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_services")])
-        buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+        # Навигация через нижнее меню
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         await callback.message.edit_text(
@@ -477,7 +519,8 @@ async def service_selected(callback: CallbackQuery, state: FSMContext, config: d
 async def proceed_to_date_selection(callback: CallbackQuery, state: FSMContext, config: dict, service: dict):
     """Переход к выбору даты"""
     if config.get('features', {}).get('enable_slot_booking', True):
-        keyboard = generate_dates_keyboard(back_callback="back_to_services")
+        # master_id=None т.к. мастера не выбраны/не включены
+        keyboard = generate_dates_keyboard(back_callback="back_to_services", config=config, master_id=None)
         await callback.message.edit_text(
             f"✅ {service['name']} — {service['price']}₽\n\n"
             "Выберите дату:",
@@ -495,9 +538,11 @@ async def proceed_to_date_selection_with_master(callback: CallbackQuery, state: 
     """Переход к выбору даты с предвыбранным мастером"""
     data = await state.get_data()
     master_name = data.get('master_name', 'Мастер')
+    master_id = data.get('master_id')
 
     if config.get('features', {}).get('enable_slot_booking', True):
-        keyboard = generate_dates_keyboard(back_callback="cancel_booking_process")
+        # Передаём master_id для фильтрации закрытых дат
+        keyboard = generate_dates_keyboard(back_callback="cancel_booking_process", config=config, master_id=master_id)
         await callback.message.edit_text(
             f"✅ {service['name']} — {service['price']}₽\n"
             f"👤 Мастер: {master_name}\n\n"
@@ -528,6 +573,7 @@ async def master_selected(callback: CallbackQuery, state: FSMContext, config: di
     if master_id == "any":
         await state.update_data(master_id=None, master_name="Любой мастер")
         master_text = "Любой свободный мастер"
+        selected_master_id = None
     else:
         master = get_master_by_id(config, master_id)
         if not master:
@@ -535,8 +581,10 @@ async def master_selected(callback: CallbackQuery, state: FSMContext, config: di
             return
         await state.update_data(master_id=master_id, master_name=master['name'])
         master_text = master['name']
+        selected_master_id = master_id
 
-    keyboard = generate_dates_keyboard(back_callback="back_to_masters")
+    # Передаём master_id для отображения закрытых дат
+    keyboard = generate_dates_keyboard(back_callback="back_to_masters", config=config, master_id=selected_master_id)
     await callback.message.edit_text(
         f"✅ {data['service_name']} — {data['price']}₽\n"
         f"👤 Мастер: {master_text}\n\n"
@@ -566,8 +614,7 @@ async def back_to_masters(callback: CallbackQuery, state: FSMContext, config: di
             callback_data=f"master:{master['id']}"
         )])
     buttons.append([InlineKeyboardButton(text="👥 Любой свободный мастер", callback_data="master:any")])
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_services")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(
@@ -596,8 +643,7 @@ async def back_to_services(callback: CallbackQuery, state: FSMContext, config: d
         btn_text = f"{svc['name']} — {svc['price']}₽{dur_text}"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"srv:{svc['id']}")])
 
-    buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="back_to_categories")])
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")])
+    # Навигация через нижнее меню
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     title = f"📂 {category}\n\n" if category else ""
@@ -624,9 +670,17 @@ async def date_selected(callback: CallbackQuery, state: FSMContext, config: dict
         await callback.answer("Нельзя выбрать прошедшую дату", show_alert=True)
         return
 
-    await state.update_data(booking_date=booking_date)
     data = await state.get_data()
     master_id = data.get('master_id')
+
+    # Проверка закрытой даты мастера
+    is_closed, reason = is_date_closed_for_master(config, master_id, selected_date)
+    if is_closed:
+        reason_text = f" ({reason})" if reason else ""
+        await callback.answer(f"❌ Мастер не работает в этот день{reason_text}", show_alert=True)
+        return
+
+    await state.update_data(booking_date=booking_date)
 
     keyboard = generate_time_slots_keyboard(config, db_manager, booking_date, master_id=master_id)
     date_formatted = selected_date.strftime('%d.%m.%Y')
@@ -640,10 +694,12 @@ async def date_selected(callback: CallbackQuery, state: FSMContext, config: dict
 
 
 @router.callback_query(F.data == "back_to_dates")
-async def back_to_dates(callback: CallbackQuery, state: FSMContext):
+async def back_to_dates(callback: CallbackQuery, state: FSMContext, config: dict):
     data = await state.get_data()
     back_cb = "back_to_masters" if data.get('master_name') else "back_to_services"
-    keyboard = generate_dates_keyboard(back_callback=back_cb)
+    master_id = data.get('master_id')
+    # Передаём master_id для отображения закрытых дат
+    keyboard = generate_dates_keyboard(back_callback=back_cb, config=config, master_id=master_id)
     await callback.message.edit_text("Выберите дату:", reply_markup=keyboard)
     await state.set_state(BookingState.choosing_date)
     await callback.answer()
@@ -719,6 +775,12 @@ async def time_selected(callback: CallbackQuery, state: FSMContext, config: dict
 @router.callback_query(F.data == "slot_taken")
 async def slot_taken_handler(callback: CallbackQuery):
     await callback.answer("Это время уже занято", show_alert=True)
+
+
+@router.callback_query(F.data == "date_closed")
+async def date_closed_handler(callback: CallbackQuery):
+    """Обработчик клика по закрытой дате"""
+    await callback.answer("❌ Мастер не работает в этот день", show_alert=True)
 
 
 # ==================== ВВОД ИМЕНИ ====================
@@ -1186,8 +1248,11 @@ async def master_edited(callback: CallbackQuery, state: FSMContext, config: dict
 
 
 @router.callback_query(BookingState.confirmation, F.data == "edit_date")
-async def edit_date(callback: CallbackQuery, state: FSMContext):
-    keyboard = generate_dates_keyboard(back_callback="back_to_confirmation")
+async def edit_date(callback: CallbackQuery, state: FSMContext, config: dict):
+    data = await state.get_data()
+    master_id = data.get('master_id')
+    # Передаём master_id для отображения закрытых дат
+    keyboard = generate_dates_keyboard(back_callback="back_to_confirmation", config=config, master_id=master_id)
     await callback.message.edit_text("Выберите дату:", reply_markup=keyboard)
     await state.set_state(BookingState.edit_date)
     await callback.answer()
@@ -1196,13 +1261,28 @@ async def edit_date(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(BookingState.edit_date, F.data.startswith("date:"))
 async def date_edited(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
     booking_date = callback.data.split(":")[1]
+    data = await state.get_data()
+    master_id = data.get('master_id')
+
+    # Проверка закрытой даты мастера
+    try:
+        selected_date = datetime.fromisoformat(booking_date).date()
+    except Exception:
+        await callback.answer("Некорректная дата", show_alert=True)
+        return
+
+    is_closed, reason = is_date_closed_for_master(config, master_id, selected_date)
+    if is_closed:
+        reason_text = f" ({reason})" if reason else ""
+        await callback.answer(f"❌ Мастер не работает в этот день{reason_text}", show_alert=True)
+        return
+
     await state.update_data(booking_date=booking_date)
 
-    data = await state.get_data()
-    keyboard = generate_time_slots_keyboard(config, db_manager, booking_date, master_id=data.get('master_id'))
+    keyboard = generate_time_slots_keyboard(config, db_manager, booking_date, master_id=master_id)
 
     await callback.message.edit_text(
-        f"📅 {datetime.fromisoformat(booking_date).strftime('%d.%m.%Y')}\n\nВыберите время:",
+        f"📅 {selected_date.strftime('%d.%m.%Y')}\n\nВыберите время:",
         reply_markup=keyboard
     )
     await state.set_state(BookingState.edit_time)
