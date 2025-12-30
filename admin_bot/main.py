@@ -95,6 +95,12 @@ class AdminPinStates(StatesGroup):
     waiting_pin = State()
 
 
+class AdminOrdersStates(StatesGroup):
+    """Состояния для выбора диапазона дат заказов"""
+    input_date_from = State()
+    input_date_to = State()
+
+
 class AdminPinMiddleware(BaseMiddleware):
     def __init__(self, config: dict):
         super().__init__()
@@ -189,7 +195,8 @@ def get_admin_reply_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="📊 Статистика")],
             [KeyboardButton(text="📅 Заказы"), KeyboardButton(text="💼 Услуги")],
             [KeyboardButton(text="👤 Персонал"), KeyboardButton(text="⚙️ Настройки")],
-            [KeyboardButton(text="🎁 Акции"), KeyboardButton(text="❓ Помощь")]
+            [KeyboardButton(text="🎁 Акции"), KeyboardButton(text="❓ Помощь")],
+            [KeyboardButton(text="👥 Клиенты")]
         ],
         resize_keyboard=True
     )
@@ -236,14 +243,11 @@ async def cmd_start(message: Message, config: dict, db_manager):
         f"├ Заказов: {stats['total_orders']}\n"
         f"├ Выручка: {stats['total_revenue']}₽\n"
         f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
-        "Выберите действие:"
+        "Используйте кнопки внизу для навигации."
     )
 
-    # Показываем постоянную клавиатуру
-    await message.answer("📋 Меню:", reply_markup=get_admin_reply_keyboard())
-
-    keyboard = get_main_menu_keyboard()
-    await message.answer(text, reply_markup=keyboard)
+    # Показываем только постоянную клавиатуру (без inline-меню)
+    await message.answer(text, reply_markup=get_admin_reply_keyboard())
 
 
 async def cmd_start_with_pin(message: Message, state: FSMContext, config: dict, pin_middleware: AdminPinMiddleware, db_manager):
@@ -932,6 +936,122 @@ async def admin_main_handler(callback, config: dict, db_manager, state: FSMConte
     await callback.answer()
 
 
+async def admin_orders_custom_range_handler(callback, state: FSMContext):
+    """Начать выбор диапазона дат"""
+    await callback.message.edit_text(
+        "📝 <b>Выбор диапазона дат</b>\n\n"
+        "Введите дату <b>начала</b> периода в формате ДД.ММ.ГГГГ\n"
+        "Например: 01.01.2025",
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminOrdersStates.input_date_from)
+    await callback.answer()
+
+
+async def process_date_from(message: Message, state: FSMContext):
+    """Обработка даты начала периода"""
+    text = message.text.strip()
+
+    # Пробуем разные форматы
+    date_formats = ['%d.%m.%Y', '%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d']
+    date_from = None
+
+    for fmt in date_formats:
+        try:
+            date_from = datetime.strptime(text, fmt).date()
+            break
+        except ValueError:
+            continue
+
+    if not date_from:
+        await message.answer(
+            "❌ Неверный формат даты.\n\n"
+            "Введите дату в формате ДД.ММ.ГГГГ\n"
+            "Например: 01.01.2025"
+        )
+        return
+
+    await state.update_data(date_from=date_from.isoformat())
+    await message.answer(
+        f"✅ Начало периода: <b>{date_from.strftime('%d.%m.%Y')}</b>\n\n"
+        "Теперь введите дату <b>конца</b> периода в формате ДД.ММ.ГГГГ\n"
+        "Например: 31.01.2025",
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminOrdersStates.input_date_to)
+
+
+async def process_date_to(message: Message, state: FSMContext, db_manager):
+    """Обработка даты конца периода и показ заказов"""
+    text = message.text.strip()
+
+    # Пробуем разные форматы
+    date_formats = ['%d.%m.%Y', '%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d']
+    date_to = None
+
+    for fmt in date_formats:
+        try:
+            date_to = datetime.strptime(text, fmt).date()
+            break
+        except ValueError:
+            continue
+
+    if not date_to:
+        await message.answer(
+            "❌ Неверный формат даты.\n\n"
+            "Введите дату в формате ДД.ММ.ГГГГ\n"
+            "Например: 31.01.2025"
+        )
+        return
+
+    data = await state.get_data()
+    date_from = datetime.fromisoformat(data.get('date_from')).date()
+
+    if date_to < date_from:
+        await message.answer("❌ Дата конца не может быть раньше даты начала. Введите корректную дату:")
+        return
+
+    await state.clear()
+
+    # Получаем заказы за период
+    cursor = db_manager.connection.cursor()
+    cursor.execute("""
+        SELECT id, service_name, price, booking_date, booking_time, client_name, phone, status
+        FROM orders
+        WHERE status = 'active'
+          AND booking_date >= ?
+          AND booking_date <= ?
+        ORDER BY booking_date, booking_time
+    """, (date_from.isoformat(), date_to.isoformat()))
+    orders = cursor.fetchall()
+
+    date_from_fmt = date_from.strftime('%d.%m.%Y')
+    date_to_fmt = date_to.strftime('%d.%m.%Y')
+
+    result_text = f"📋 <b>Заказы за период</b>\n"
+    result_text += f"📅 {date_from_fmt} — {date_to_fmt}\n"
+    result_text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    if not orders:
+        result_text += "<i>Заказов за этот период нет</i>"
+    else:
+        total_revenue = 0
+        for order_id, service_name, price, booking_date, booking_time, client_name, phone, status in orders:
+            try:
+                bd_fmt = datetime.fromisoformat(booking_date).strftime('%d.%m.%Y')
+            except:
+                bd_fmt = booking_date
+            result_text += f"#{order_id} | {bd_fmt} {booking_time or ''}\n"
+            result_text += f"├ {service_name} — {price}₽\n"
+            result_text += f"└ {client_name}\n\n"
+            total_revenue += price or 0
+
+        result_text += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        result_text += f"📊 Всего: {len(orders)} заказов | 💰 {total_revenue}₽"
+
+    await message.answer(result_text, parse_mode="HTML")
+
+
 async def main():
     """Главная функция админ-бота"""
     parser = argparse.ArgumentParser(description='Admin Bot for Bot-Business V2.0')
@@ -1025,6 +1145,7 @@ async def main():
                 InlineKeyboardButton(text="📅 Эта неделя", callback_data="admin_orders_week"),
                 InlineKeyboardButton(text="📆 Все будущие", callback_data="admin_orders_all_future"),
             ],
+            [InlineKeyboardButton(text="📝 Выбрать диапазон", callback_data="admin_orders_custom_range")],
         ])
         await message.answer("📋 <b>Выберите период:</b>", reply_markup=keyboard)
 
@@ -1077,11 +1198,10 @@ async def main():
         """Обработчик кнопки Настройки"""
         await state.clear()  # Очищаем FSM при нажатии на меню
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="business_settings")],
+            [InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="admin_settings")],
             [InlineKeyboardButton(text="🎁 Акции", callback_data="promotions_menu")],
             [InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")],
             [InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu")],
-            [InlineKeyboardButton(text="⚙️ Система", callback_data="admin_settings")],
         ])
         await message.answer("⚙️ <b>Настройки</b>\n\nВыберите раздел:", reply_markup=keyboard)
 
@@ -1104,8 +1224,144 @@ async def main():
         await message.answer(text)
 
     async def reply_back_handler(message: Message, state: FSMContext, config: dict, db_manager):
-        """Обработчик кнопки Назад - возврат в главное меню"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
+        """Обработчик кнопки Назад - возврат на предыдущий шаг или в главное меню"""
+        from admin_bot.states import StaffEditorStates, ClosedDatesStates
+        from admin_handlers.promotions_editor import PromotionStates
+        from admin_handlers.services_editor import ServiceEditStates
+
+        current_state = await state.get_state()
+
+        # Определяем куда вернуться в зависимости от текущего состояния
+        if current_state:
+            state_data = await state.get_data()
+
+            # Состояния добавления/редактирования мастера
+            if current_state == StaffEditorStates.enter_name.state:
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            elif current_state == StaffEditorStates.enter_role.state:
+                # Возврат к вводу имени
+                await state.set_state(StaffEditorStates.enter_name)
+                text = """
+➕ <b>ДОБАВЛЕНИЕ МАСТЕРА</b>
+
+Шаг 1 из 5: Введите имя мастера (от 2 до 50 символов):
+
+<i>Например: Анна, Мария Иванова</i>
+"""
+                await message.answer(text)
+                return
+
+            elif current_state == StaffEditorStates.choose_services.state:
+                # Возврат к вводу должности
+                await state.set_state(StaffEditorStates.enter_role)
+                name = state_data.get('master_name', '')
+                text = f"""
+✅ Имя: <b>{name}</b>
+
+Шаг 2 из 5: Введите должность/специализацию:
+
+<i>Например: Парикмахер, Мастер маникюра, Косметолог</i>
+"""
+                await message.answer(text)
+                return
+
+            elif current_state == StaffEditorStates.choose_schedule_days.state:
+                # Возврат к выбору услуг - показываем inline кнопку
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 Начать заново", callback_data="add_master")],
+                    [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+                ])
+                await message.answer("↩️ Вернитесь к выбору услуг или начните заново", reply_markup=keyboard)
+                return
+
+            elif current_state == StaffEditorStates.choose_schedule_hours.state:
+                # Возврат к выбору дней
+                from admin_handlers.staff_editor import _build_days_keyboard
+                selected_days = state_data.get('selected_days', [])
+                await state.set_state(StaffEditorStates.choose_schedule_days)
+                name = state_data.get('master_name', '')
+                role = state_data.get('master_role', '')
+                services_count = len(state_data.get('selected_services', []))
+                text = f"""
+✅ Имя: <b>{name}</b>
+✅ Должность: <b>{role}</b>
+✅ Услуг выбрано: <b>{services_count}</b>
+
+Шаг 4 из 5: Выберите рабочие дни мастера.
+
+Нажимайте на дни для выбора/отмены:
+"""
+                keyboard = _build_days_keyboard(selected_days)
+                await message.answer(text, reply_markup=keyboard)
+                return
+
+            elif current_state == StaffEditorStates.edit_name.state or current_state == StaffEditorStates.edit_role.state:
+                # Возврат к редактированию мастера
+                master_id = state_data.get('editing_master_id', '')
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👤 К мастеру", callback_data=f"edit_master_{master_id}")],
+                    [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+                ])
+                await message.answer("↩️ Редактирование отменено", reply_markup=keyboard)
+                return
+
+            # Состояния акций
+            elif current_state and 'PromotionStates' in current_state:
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🎁 К акциям", callback_data="promotions_menu")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            # Состояния услуг
+            elif current_state and 'ServiceEditStates' in current_state:
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📋 К услугам", callback_data="admin_services")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            # Состояния текстов/FAQ
+            elif current_state and ('TextsEditorStates' in current_state or 'FAQEditorStates' in current_state):
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📝 К текстам", callback_data="texts_menu")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            # Состояния настроек
+            elif current_state and ('SettingsEditStates' in current_state or 'BusinessSettingsStates' in current_state):
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="⚙️ К настройкам", callback_data="admin_settings")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            # Состояния закрытых дат
+            elif current_state and 'ClosedDatesStates' in current_state:
+                master_id = state_data.get('master_id', '')
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📅 К датам", callback_data=f"closed_dates_{master_id}")],
+                    [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+        # По умолчанию - главное меню
+        await state.clear()
         business_name = config.get('business_name', 'Ваш бизнес')
         stats = db_manager.get_stats('today')
 
@@ -1115,11 +1371,10 @@ async def main():
             f"├ Заказов: {stats['total_orders']}\n"
             f"├ Выручка: {stats['total_revenue']}₽\n"
             f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
-            "Выберите действие:"
+            "Используйте кнопки внизу для навигации."
         )
 
-        keyboard = get_main_menu_keyboard()
-        await message.answer(text, reply_markup=keyboard)
+        await message.answer(text, reply_markup=get_admin_reply_keyboard())
 
     async def reply_promotions_handler(message: Message, state: FSMContext, config: dict):
         """Обработчик кнопки Акции"""
@@ -1147,6 +1402,51 @@ async def main():
 
         await message.answer(text, reply_markup=keyboard)
 
+    async def reply_clients_handler(message: Message, state: FSMContext, db_manager):
+        """Обработчик кнопки Клиенты"""
+        await state.clear()  # Очищаем FSM при нажатии на меню
+
+        # Получаем список клиентов с базовой статистикой
+        cursor = db_manager.connection.cursor()
+        cursor.execute("""
+            SELECT
+                u.telegram_id,
+                u.username,
+                u.first_name,
+                u.last_name,
+                COUNT(o.id) as orders_count,
+                COALESCE(SUM(o.price), 0) as total_spent,
+                MAX(o.phone) as last_phone
+            FROM users u
+            LEFT JOIN orders o ON u.telegram_id = o.user_id AND o.status = 'active'
+            GROUP BY u.telegram_id
+            ORDER BY orders_count DESC
+            LIMIT 20
+        """)
+        clients = cursor.fetchall()
+
+        text = "👥 <b>КЛИЕНТЫ</b>\n\n"
+        total_clients = len(clients)
+        text += f"Всего клиентов: {total_clients}\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        if not clients:
+            text += "<i>Клиентов пока нет</i>"
+        else:
+            for telegram_id, username, first_name, last_name, orders_count, total_spent, last_phone in clients:
+                name = first_name or "—"
+                if last_name:
+                    name += f" {last_name}"
+                text += f"👤 <b>{name}</b>\n"
+                if username:
+                    text += f"   @{username}\n"
+                text += f"   📦 Заказов: {orders_count} | 💰 {total_spent}₽\n"
+                if last_phone:
+                    text += f"   📱 {last_phone}\n"
+                text += "\n"
+
+        await message.answer(text)
+
     # Регистрируем обработчики нижней клавиатуры ПЕРВЫМИ (до роутеров!)
     dp.message.register(reply_back_handler, F.text == "◀️ Назад")
     dp.message.register(reply_stats_handler, F.text == "📊 Статистика")
@@ -1156,6 +1456,7 @@ async def main():
     dp.message.register(reply_settings_handler, F.text == "⚙️ Настройки")
     dp.message.register(reply_promotions_handler, F.text == "🎁 Акции")
     dp.message.register(reply_help_handler, F.text == "❓ Помощь")
+    dp.message.register(reply_clients_handler, F.text == "👥 Клиенты")
 
     # Подключаем роутеры для редактирования (ПОСЛЕ обработчиков нижней клавиатуры!)
     dp.include_router(services_editor.router)
@@ -1169,6 +1470,8 @@ async def main():
     # Регистрируем остальные handlers
     dp.message.register(cmd_start_with_pin, Command("start"))
     dp.message.register(process_pin, AdminPinStates.waiting_pin)
+    dp.message.register(process_date_from, AdminOrdersStates.input_date_from)
+    dp.message.register(process_date_to, AdminOrdersStates.input_date_to)
     dp.message.register(unknown_message, StateFilter(None), ~F.text.startswith("/"))
     
     # Callback handlers
@@ -1177,6 +1480,7 @@ async def main():
     dp.callback_query.register(admin_orders_tomorrow_handler, F.data == "admin_orders_tomorrow")
     dp.callback_query.register(admin_orders_week_handler, F.data == "admin_orders_week")
     dp.callback_query.register(admin_orders_all_future_handler, F.data == "admin_orders_all_future")
+    dp.callback_query.register(admin_orders_custom_range_handler, F.data == "admin_orders_custom_range")
     dp.callback_query.register(admin_orders_page_handler, F.data.startswith("admin_orders_page:"))
     dp.callback_query.register(admin_order_detail_handler, F.data.startswith("admin_order:"))
     dp.callback_query.register(admin_client_history_handler, F.data.startswith("admin_client_history:"))

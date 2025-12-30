@@ -116,7 +116,7 @@ async def edit_message_start(callback: CallbackQuery, state: FSMContext, config:
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="texts_messages")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="texts_messages")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -138,7 +138,7 @@ async def save_message_text(message: Message, state: FSMContext, config: dict, c
 
     if not is_valid:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="texts_messages")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="texts_messages")],
         ])
         await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
         return
@@ -206,7 +206,7 @@ async def faq_add_start(callback: CallbackQuery, state: FSMContext):
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="texts_faq")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="texts_faq")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -224,7 +224,7 @@ async def faq_add_button(message: Message, state: FSMContext):
 
     if not is_valid:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="texts_faq")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="texts_faq")],
         ])
         await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
         return
@@ -238,7 +238,7 @@ async def faq_add_button(message: Message, state: FSMContext):
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="texts_faq")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="texts_faq")],
     ])
 
     await message.answer(text, reply_markup=keyboard)
@@ -255,7 +255,7 @@ async def faq_add_answer(message: Message, state: FSMContext, config: dict, conf
 
     if not is_valid:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="texts_faq")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="texts_faq")],
         ])
         await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
         return
@@ -375,7 +375,7 @@ async def faq_edit_button_start(callback: CallbackQuery, state: FSMContext, conf
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"faq_edit_{index}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"faq_edit_{index}")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -396,7 +396,7 @@ async def faq_edit_button_save(message: Message, state: FSMContext, config: dict
 
     if not is_valid:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"faq_edit_{index}")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"faq_edit_{index}")],
         ])
         await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
         return
@@ -440,7 +440,7 @@ async def faq_edit_answer_start(callback: CallbackQuery, state: FSMContext, conf
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"faq_edit_{index}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"faq_edit_{index}")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -461,7 +461,7 @@ async def faq_edit_answer_save(message: Message, state: FSMContext, config: dict
 
     if not is_valid:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"faq_edit_{index}")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"faq_edit_{index}")],
         ])
         await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
         return
@@ -542,7 +542,7 @@ async def faq_delete_confirm(callback: CallbackQuery, config: dict):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"faq_confirm_delete_{index}"),
-            InlineKeyboardButton(text="❌ Отмена", callback_data="faq_delete_list"),
+            InlineKeyboardButton(text="🔙 Назад", callback_data="faq_delete_list"),
         ],
     ])
 

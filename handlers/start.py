@@ -105,16 +105,32 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
 
         # choosing_service → choosing_category (или главное меню)
         if current_state == BookingState.choosing_service.state:
-            if len(categories) > 1:
-                # Возвращаемся к категориям
+            # Проверяем, есть ли предвыбранный мастер - фильтруем категории по его услугам
+            master_service_ids = data.get('master_service_ids')
+            if master_service_ids:
+                # Фильтруем услуги по мастеру
+                filtered_services = [s for s in services if s.get('id') in master_service_ids]
+                filtered_categories = get_categories_from_services(filtered_services)
+            else:
+                filtered_categories = categories
+
+            if len(filtered_categories) > 1:
+                # Возвращаемся к категориям (только те, что есть у мастера)
                 buttons = []
-                for cat in categories:
+                for cat in filtered_categories:
                     buttons.append([InlineKeyboardButton(
                         text=f"📂 {cat}",
                         callback_data=f"cat:{cat}"
                     )])
                 keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-                await message.answer("Выберите категорию услуг:", reply_markup=keyboard)
+
+                # Если запись к мастеру - показываем его имя
+                master_name = data.get('master_name') or data.get('selected_master_name')
+                if data.get('booking_with_preselected_master') and master_name:
+                    await message.answer(f"📅 Запись к мастеру: <b>{master_name}</b>\n\nВыберите категорию:",
+                                        reply_markup=keyboard, parse_mode="HTML")
+                else:
+                    await message.answer("Выберите категорию услуг:", reply_markup=keyboard)
                 await state.set_state(BookingState.choosing_category)
                 return
             else:

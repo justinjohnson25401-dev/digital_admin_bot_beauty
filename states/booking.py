@@ -7,6 +7,7 @@ class BookingState(StatesGroup):
     choosing_service = State()   # Выбор услуги
     choosing_master = State()    # Выбор мастера (если staff.enabled)
     choosing_date = State()
+    input_custom_date = State()  # Ручной ввод даты
     choosing_time = State()
     input_name = State()
     choosing_phone_method = State()  # Выбор способа ввода телефона

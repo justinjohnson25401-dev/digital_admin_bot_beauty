@@ -609,7 +609,7 @@ async def confirm_delete_service(callback: CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"service_delete_confirm:{service_id}"),
-            InlineKeyboardButton(text="❌ Отмена", callback_data=f"service_view:{service_id}")
+            InlineKeyboardButton(text="🔙 Назад", callback_data=f"service_view:{service_id}")
         ]
     ])
     

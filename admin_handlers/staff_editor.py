@@ -110,11 +110,7 @@ async def add_master_start(callback: CallbackQuery, state: FSMContext):
 <i>Например: Анна, Мария Иванова</i>
 """
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")],
-    ])
-
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text)
     await state.set_state(StaffEditorStates.enter_name)
     await callback.answer()
 
@@ -128,10 +124,7 @@ async def add_master_name(message: Message, state: FSMContext):
     is_valid, error = validate_master_name(name)
 
     if not is_valid:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")],
-        ])
-        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
+        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:")
         return
 
     await state.update_data(master_name=name)
@@ -144,11 +137,7 @@ async def add_master_name(message: Message, state: FSMContext):
 <i>Например: Парикмахер, Мастер маникюра, Косметолог</i>
 """
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")],
-    ])
-
-    await message.answer(text, reply_markup=keyboard)
+    await message.answer(text)
     await state.set_state(StaffEditorStates.enter_role)
 
 
@@ -161,10 +150,7 @@ async def add_master_role(message: Message, state: FSMContext, config: dict):
     is_valid, error = validate_master_role(role)
 
     if not is_valid:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")],
-        ])
-        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
+        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:")
         return
 
     await state.update_data(master_role=role)
@@ -207,7 +193,6 @@ async def add_master_role(message: Message, state: FSMContext, config: dict):
         ])
 
     keyboard_rows.append([InlineKeyboardButton(text="✅ Продолжить", callback_data="services_done")])
-    keyboard_rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
@@ -246,7 +231,6 @@ async def toggle_service_selection(callback: CallbackQuery, state: FSMContext, c
         ])
 
     keyboard_rows.append([InlineKeyboardButton(text="✅ Продолжить", callback_data="services_done")])
-    keyboard_rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
@@ -256,7 +240,7 @@ async def toggle_service_selection(callback: CallbackQuery, state: FSMContext, c
 
 @router.callback_query(F.data == "services_done", StaffEditorStates.choose_services)
 async def services_selected(callback: CallbackQuery, state: FSMContext):
-    """Услуги выбраны, переходим к графику"""
+    """Услуги выбраны, переходим к выбору дней недели"""
 
     data = await state.get_data()
     selected = data.get('selected_services', [])
@@ -265,31 +249,219 @@ async def services_selected(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Выберите хотя бы одну услугу", show_alert=True)
         return
 
+    # Инициализируем выбранные дни (по умолчанию Пн-Пт)
+    default_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+    await state.update_data(selected_days=default_days)
+
     text = f"""
 ✅ Имя: <b>{data['master_name']}</b>
 ✅ Должность: <b>{data['master_role']}</b>
 ✅ Услуг выбрано: <b>{len(selected)}</b>
 
-Шаг 4 из 4: Выберите график работы:
+Шаг 4 из 5: Выберите рабочие дни мастера.
+
+Нажимайте на дни для выбора/отмены:
 """
 
-    templates = StaffManager.get_schedule_templates()
+    keyboard = _build_days_keyboard(default_days)
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.choose_schedule_days)
+    await callback.answer()
+
+
+def _build_days_keyboard(selected_days: list) -> InlineKeyboardMarkup:
+    """Построить клавиатуру с мультиселектом дней недели"""
+    days = [
+        ('monday', 'Понедельник'),
+        ('tuesday', 'Вторник'),
+        ('wednesday', 'Среда'),
+        ('thursday', 'Четверг'),
+        ('friday', 'Пятница'),
+        ('saturday', 'Суббота'),
+        ('sunday', 'Воскресенье'),
+    ]
 
     keyboard_rows = []
-    for template_id, description in templates.items():
+    for day_id, day_name in days:
+        is_selected = day_id in selected_days
+        mark = "☑" if is_selected else "☐"
         keyboard_rows.append([
             InlineKeyboardButton(
-                text=f"📅 {description}",
-                callback_data=f"template_{template_id}"
+                text=f"{mark} {day_name}",
+                callback_data=f"toggle_day_{day_id}"
             )
         ])
 
-    keyboard_rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="staff_menu")])
+    keyboard_rows.append([InlineKeyboardButton(text="✅ Продолжить", callback_data="days_done")])
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+
+@router.callback_query(F.data.startswith("toggle_day_"), StaffEditorStates.choose_schedule_days)
+async def toggle_day_selection(callback: CallbackQuery, state: FSMContext):
+    """Переключить выбор дня недели"""
+
+    day_id = callback.data.replace("toggle_day_", "")
+
+    data = await state.get_data()
+    selected_days = data.get('selected_days', [])
+
+    if day_id in selected_days:
+        selected_days.remove(day_id)
+    else:
+        selected_days.append(day_id)
+
+    await state.update_data(selected_days=selected_days)
+
+    keyboard = _build_days_keyboard(selected_days)
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "days_done", StaffEditorStates.choose_schedule_days)
+async def days_selected(callback: CallbackQuery, state: FSMContext):
+    """Дни выбраны, переходим к выбору времени работы"""
+
+    data = await state.get_data()
+    selected_days = data.get('selected_days', [])
+
+    if not selected_days:
+        await callback.answer("❌ Выберите хотя бы один день", show_alert=True)
+        return
+
+    # Форматируем выбранные дни
+    days_short = {
+        'monday': 'Пн', 'tuesday': 'Вт', 'wednesday': 'Ср',
+        'thursday': 'Чт', 'friday': 'Пт', 'saturday': 'Сб', 'sunday': 'Вс'
+    }
+    days_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    sorted_days = [d for d in days_order if d in selected_days]
+    days_text = ', '.join([days_short[d] for d in sorted_days])
+
+    text = f"""
+✅ Имя: <b>{data['master_name']}</b>
+✅ Должность: <b>{data['master_role']}</b>
+✅ Услуг выбрано: <b>{len(data.get('selected_services', []))}</b>
+✅ Дни: <b>{days_text}</b>
+
+Шаг 5 из 5: Выберите время работы:
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🕘 09:00 - 18:00", callback_data="hours_09_18")],
+        [InlineKeyboardButton(text="🕙 10:00 - 19:00", callback_data="hours_10_19")],
+        [InlineKeyboardButton(text="🕙 10:00 - 20:00", callback_data="hours_10_20")],
+        [InlineKeyboardButton(text="🕙 10:00 - 21:00", callback_data="hours_10_21")],
+        [InlineKeyboardButton(text="🕛 12:00 - 21:00", callback_data="hours_12_21")],
+    ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
-    await state.set_state(StaffEditorStates.choose_schedule_template)
+    await state.set_state(StaffEditorStates.choose_schedule_hours)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("hours_"), StaffEditorStates.choose_schedule_hours)
+async def hours_selected(callback: CallbackQuery, state: FSMContext, config: dict, config_manager):
+    """Время выбрано, создаём мастера"""
+
+    hours_data = callback.data.replace("hours_", "")
+    start_hour, end_hour = hours_data.split("_")
+    start_time = f"{start_hour}:00"
+    end_time = f"{end_hour}:00"
+
+    data = await state.get_data()
+    selected_days = data.get('selected_days', [])
+
+    # Создаём график
+    schedule = {}
+    all_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for day in all_days:
+        if day in selected_days:
+            schedule[day] = {"working": True, "start": start_time, "end": end_time}
+        else:
+            schedule[day] = {"working": False}
+
+    try:
+        # Проверяем наличие всех необходимых данных
+        if not data.get('master_name') or not data.get('master_role'):
+            await callback.answer("❌ Ошибка: данные мастера не найдены. Начните заново.", show_alert=True)
+            await state.clear()
+            return
+
+        if not data.get('selected_services'):
+            await callback.answer("❌ Ошибка: услуги не выбраны. Начните заново.", show_alert=True)
+            await state.clear()
+            return
+
+        master_data = {
+            "name": data['master_name'],
+            "specialization": data['master_role'],
+            "role": data['master_role'],
+            "photo_url": None,
+            "services": data['selected_services'],
+            "schedule": schedule,
+            "closed_dates": []
+        }
+
+        # Сохраняем
+        editor = get_config_editor(config)
+        master_id = editor.add_master(master_data)
+
+        if not master_id:
+            raise ValueError("add_master вернул пустой ID")
+
+        # Обновляем config в памяти
+        if 'staff' not in config:
+            config['staff'] = {'enabled': False, 'masters': []}
+
+        master_data['id'] = master_id
+        config['staff']['masters'].append(master_data)
+        config_manager.config['staff'] = config['staff']
+
+        # Форматируем выбранные дни
+        days_short = {
+            'monday': 'Пн', 'tuesday': 'Вт', 'wednesday': 'Ср',
+            'thursday': 'Чт', 'friday': 'Пт', 'saturday': 'Сб', 'sunday': 'Вс'
+        }
+        days_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        sorted_days = [d for d in days_order if d in selected_days]
+        days_text = ', '.join([days_short[d] for d in sorted_days])
+
+        text = f"""
+✅ <b>МАСТЕР ДОБАВЛЕН!</b>
+
+👤 <b>{data['master_name']}</b>
+💼 {data['master_role']}
+📋 Услуг: {len(data['selected_services'])}
+📅 График: {days_text}, {start_time}-{end_time}
+
+<i>ID мастера: {master_id}</i>
+"""
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+        ])
+
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        logger.info(f"Master {master_id} ({data['master_name']}) added by admin {callback.from_user.id}")
+
+    except Exception as e:
+        logger.error(f"Error adding master: {e}", exc_info=True)
+
+        error_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="add_master")],
+            [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+        ])
+
+        await callback.message.edit_text(
+            f"❌ <b>Ошибка при добавлении мастера</b>\n\n"
+            f"Произошла системная ошибка. Пожалуйста, попробуйте ещё раз.\n\n"
+            f"<i>Техническая информация: {str(e)[:100]}</i>",
+            reply_markup=error_keyboard
+        )
+
+    await state.clear()
     await callback.answer()
 
 
@@ -466,11 +638,7 @@ async def edit_master_name_start(callback: CallbackQuery, state: FSMContext):
 
     text = "✏️ Введите новое имя мастера:"
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"edit_master_{master_id}")],
-    ])
-
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text)
     await state.set_state(StaffEditorStates.edit_name)
     await state.update_data(editing_master_id=master_id)
     await callback.answer()
@@ -487,10 +655,7 @@ async def edit_master_name_save(message: Message, state: FSMContext, config: dic
     is_valid, error = validate_master_name(new_name)
 
     if not is_valid:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"edit_master_{master_id}")],
-        ])
-        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
+        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:")
         return
 
     # Сохраняем
@@ -522,11 +687,7 @@ async def edit_master_role_start(callback: CallbackQuery, state: FSMContext):
 
     text = "✏️ Введите новую должность/специализацию:"
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"edit_master_{master_id}")],
-    ])
-
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text)
     await state.set_state(StaffEditorStates.edit_role)
     await state.update_data(editing_master_id=master_id)
     await callback.answer()
@@ -543,10 +704,7 @@ async def edit_master_role_save(message: Message, state: FSMContext, config: dic
     is_valid, error = validate_master_role(new_role)
 
     if not is_valid:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"edit_master_{master_id}")],
-        ])
-        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
+        await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:")
         return
 
     # Сохраняем оба поля для совместимости
@@ -826,10 +984,8 @@ async def delete_master_confirm(callback: CallbackQuery, config: dict, db_manage
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_master_{master_id}"),
-            InlineKeyboardButton(text="❌ Отмена", callback_data="delete_master_list"),
-        ],
+        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_master_{master_id}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="delete_master_list")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -1024,7 +1180,7 @@ async def select_closed_date(callback: CallbackQuery, state: FSMContext):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⏭ Пропустить", callback_data=f"save_closed_no_reason_{master_id}_{date_str}")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"closed_dates_{master_id}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"closed_dates_{master_id}")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
