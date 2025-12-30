@@ -1198,11 +1198,10 @@ async def main():
         """Обработчик кнопки Настройки"""
         await state.clear()  # Очищаем FSM при нажатии на меню
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="business_settings")],
+            [InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="admin_settings")],
             [InlineKeyboardButton(text="🎁 Акции", callback_data="promotions_menu")],
             [InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")],
             [InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu")],
-            [InlineKeyboardButton(text="⚙️ Система", callback_data="admin_settings")],
         ])
         await message.answer("⚙️ <b>Настройки</b>\n\nВыберите раздел:", reply_markup=keyboard)
 
@@ -1225,8 +1224,144 @@ async def main():
         await message.answer(text)
 
     async def reply_back_handler(message: Message, state: FSMContext, config: dict, db_manager):
-        """Обработчик кнопки Назад - возврат в главное меню"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
+        """Обработчик кнопки Назад - возврат на предыдущий шаг или в главное меню"""
+        from admin_bot.states import StaffEditorStates, ClosedDatesStates
+        from admin_handlers.promotions_editor import PromotionStates
+        from admin_handlers.services_editor import ServiceEditStates
+
+        current_state = await state.get_state()
+
+        # Определяем куда вернуться в зависимости от текущего состояния
+        if current_state:
+            state_data = await state.get_data()
+
+            # Состояния добавления/редактирования мастера
+            if current_state == StaffEditorStates.enter_name.state:
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            elif current_state == StaffEditorStates.enter_role.state:
+                # Возврат к вводу имени
+                await state.set_state(StaffEditorStates.enter_name)
+                text = """
+➕ <b>ДОБАВЛЕНИЕ МАСТЕРА</b>
+
+Шаг 1 из 5: Введите имя мастера (от 2 до 50 символов):
+
+<i>Например: Анна, Мария Иванова</i>
+"""
+                await message.answer(text)
+                return
+
+            elif current_state == StaffEditorStates.choose_services.state:
+                # Возврат к вводу должности
+                await state.set_state(StaffEditorStates.enter_role)
+                name = state_data.get('master_name', '')
+                text = f"""
+✅ Имя: <b>{name}</b>
+
+Шаг 2 из 5: Введите должность/специализацию:
+
+<i>Например: Парикмахер, Мастер маникюра, Косметолог</i>
+"""
+                await message.answer(text)
+                return
+
+            elif current_state == StaffEditorStates.choose_schedule_days.state:
+                # Возврат к выбору услуг - показываем inline кнопку
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 Начать заново", callback_data="add_master")],
+                    [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+                ])
+                await message.answer("↩️ Вернитесь к выбору услуг или начните заново", reply_markup=keyboard)
+                return
+
+            elif current_state == StaffEditorStates.choose_schedule_hours.state:
+                # Возврат к выбору дней
+                from admin_handlers.staff_editor import _build_days_keyboard
+                selected_days = state_data.get('selected_days', [])
+                await state.set_state(StaffEditorStates.choose_schedule_days)
+                name = state_data.get('master_name', '')
+                role = state_data.get('master_role', '')
+                services_count = len(state_data.get('selected_services', []))
+                text = f"""
+✅ Имя: <b>{name}</b>
+✅ Должность: <b>{role}</b>
+✅ Услуг выбрано: <b>{services_count}</b>
+
+Шаг 4 из 5: Выберите рабочие дни мастера.
+
+Нажимайте на дни для выбора/отмены:
+"""
+                keyboard = _build_days_keyboard(selected_days)
+                await message.answer(text, reply_markup=keyboard)
+                return
+
+            elif current_state == StaffEditorStates.edit_name.state or current_state == StaffEditorStates.edit_role.state:
+                # Возврат к редактированию мастера
+                master_id = state_data.get('editing_master_id', '')
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👤 К мастеру", callback_data=f"edit_master_{master_id}")],
+                    [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+                ])
+                await message.answer("↩️ Редактирование отменено", reply_markup=keyboard)
+                return
+
+            # Состояния акций
+            elif current_state and 'PromotionStates' in current_state:
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🎁 К акциям", callback_data="promotions_menu")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            # Состояния услуг
+            elif current_state and 'ServiceEditStates' in current_state:
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📋 К услугам", callback_data="admin_services")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            # Состояния текстов/FAQ
+            elif current_state and ('TextsEditorStates' in current_state or 'FAQEditorStates' in current_state):
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📝 К текстам", callback_data="texts_menu")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            # Состояния настроек
+            elif current_state and ('SettingsEditStates' in current_state or 'BusinessSettingsStates' in current_state):
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="⚙️ К настройкам", callback_data="admin_settings")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+            # Состояния закрытых дат
+            elif current_state and 'ClosedDatesStates' in current_state:
+                master_id = state_data.get('master_id', '')
+                await state.clear()
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📅 К датам", callback_data=f"closed_dates_{master_id}")],
+                    [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+                ])
+                await message.answer("↩️ Действие отменено", reply_markup=keyboard)
+                return
+
+        # По умолчанию - главное меню
+        await state.clear()
         business_name = config.get('business_name', 'Ваш бизнес')
         stats = db_manager.get_stats('today')
 

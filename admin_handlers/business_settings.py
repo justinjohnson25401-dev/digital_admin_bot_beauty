@@ -72,7 +72,7 @@ async def edit_business_name_start(callback: CallbackQuery, state: FSMContext, c
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="business_settings")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="business_settings")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -91,7 +91,7 @@ async def save_business_name(message: Message, state: FSMContext, config: dict, 
 
     if not is_valid:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="business_settings")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="business_settings")],
         ])
         await message.answer(f"❌ {error}\n\nПопробуйте ещё раз:", reply_markup=keyboard)
         return
@@ -127,7 +127,7 @@ async def edit_work_start(callback: CallbackQuery, state: FSMContext, config: di
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="business_settings")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="business_settings")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -143,7 +143,7 @@ async def save_work_start(message: Message, state: FSMContext, config: dict, con
         start = int(message.text.strip())
     except ValueError:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="business_settings")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="business_settings")],
         ])
         await message.answer("❌ Введите число от 0 до 23", reply_markup=keyboard)
         return
@@ -154,7 +154,7 @@ async def save_work_start(message: Message, state: FSMContext, config: dict, con
 
     if not is_valid:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="business_settings")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="business_settings")],
         ])
         await message.answer(f"❌ {error}", reply_markup=keyboard)
         return
@@ -189,7 +189,7 @@ async def edit_work_end(callback: CallbackQuery, state: FSMContext, config: dict
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="business_settings")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="business_settings")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -205,7 +205,7 @@ async def save_work_end(message: Message, state: FSMContext, config: dict, confi
         end = int(message.text.strip())
     except ValueError:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="business_settings")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="business_settings")],
         ])
         await message.answer("❌ Введите число от 1 до 24", reply_markup=keyboard)
         return
@@ -216,7 +216,7 @@ async def save_work_end(message: Message, state: FSMContext, config: dict, confi
 
     if not is_valid:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="business_settings")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="business_settings")],
         ])
         await message.answer(f"❌ {error}", reply_markup=keyboard)
         return

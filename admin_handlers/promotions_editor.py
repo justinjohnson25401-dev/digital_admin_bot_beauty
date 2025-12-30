@@ -95,7 +95,7 @@ async def add_promotion_start(callback: CallbackQuery, state: FSMContext):
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="promotions_menu")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="promotions_menu")]
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -130,7 +130,7 @@ async def add_promotion_title(message: Message, state: FSMContext):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⏭ Пропустить", callback_data="promo_skip_description")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="promotions_menu")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="promotions_menu")]
     ])
 
     await message.answer(text, reply_markup=keyboard)
@@ -182,7 +182,7 @@ async def ask_for_emoji(callback: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text="💝", callback_data="promo_emoji:💝"),
             InlineKeyboardButton(text="✨", callback_data="promo_emoji:✨"),
         ],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="promotions_menu")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="promotions_menu")]
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -213,7 +213,7 @@ async def ask_for_emoji_message(message: Message, state: FSMContext):
             InlineKeyboardButton(text="💝", callback_data="promo_emoji:💝"),
             InlineKeyboardButton(text="✨", callback_data="promo_emoji:✨"),
         ],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="promotions_menu")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="promotions_menu")]
     ])
 
     await message.answer(text, reply_markup=keyboard)
@@ -241,7 +241,7 @@ async def select_emoji(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="📅 До конца месяца", callback_data="promo_end_month")],
         [InlineKeyboardButton(text="📅 На 2 недели", callback_data="promo_2weeks")],
         [InlineKeyboardButton(text="📅 На месяц", callback_data="promo_1month")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="promotions_menu")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="promotions_menu")]
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -446,7 +446,7 @@ async def confirm_delete_promotion(callback: CallbackQuery, config: dict):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"promo_confirm_delete:{promo_index}"),
-            InlineKeyboardButton(text="❌ Отмена", callback_data=f"promo_edit:{promo_index}")
+            InlineKeyboardButton(text="🔙 Назад", callback_data=f"promo_edit:{promo_index}")
         ]
     ])
 
@@ -495,7 +495,7 @@ async def edit_title_start(callback: CallbackQuery, state: FSMContext):
     text = "✏️ Введите новое название акции:"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"promo_edit:{promo_index}")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"promo_edit:{promo_index}")]
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -542,7 +542,7 @@ async def edit_description_start(callback: CallbackQuery, state: FSMContext):
     text = "✏️ Введите новое описание акции:\n\n<i>Отправьте «0» чтобы удалить описание</i>"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"promo_edit:{promo_index}")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"promo_edit:{promo_index}")]
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -603,7 +603,7 @@ async def edit_emoji_start(callback: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text="💝", callback_data="promo_set_emoji:💝"),
             InlineKeyboardButton(text="✨", callback_data="promo_set_emoji:✨"),
         ],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"promo_edit:{promo_index}")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"promo_edit:{promo_index}")]
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -648,7 +648,7 @@ async def edit_valid_until_start(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="📅 До конца месяца", callback_data="promo_set_end_month")],
         [InlineKeyboardButton(text="📅 На 2 недели", callback_data="promo_set_2weeks")],
         [InlineKeyboardButton(text="📅 На месяц", callback_data="promo_set_1month")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"promo_edit:{promo_index}")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"promo_edit:{promo_index}")]
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
