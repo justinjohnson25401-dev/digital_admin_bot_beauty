@@ -89,34 +89,37 @@ def generate_dates_keyboard(back_callback: str = "back_to_masters", config: dict
     """Генерация клавиатуры с датами.
 
     Если указан master_id - закрытые даты мастера будут помечены как недоступные.
+    Единообразное оформление для всех дат.
     """
     buttons = []
     today = datetime.now().date()
 
     # Сегодня
+    day_name_today = DAYS_RU.get(today.strftime('%A'), today.strftime('%a'))
     is_closed, reason = is_date_closed_for_master(config, master_id, today) if config else (False, None)
     if is_closed:
         buttons.append([InlineKeyboardButton(
-            text=f"🚫 Сегодня ({today.strftime('%d.%m')}) - закрыто",
+            text=f"🚫 {day_name_today} {today.strftime('%d.%m')} — Сегодня (закрыто)",
             callback_data="date_closed"
         )])
     else:
         buttons.append([InlineKeyboardButton(
-            text=f"📅 Сегодня ({today.strftime('%d.%m')})",
+            text=f"📅 {day_name_today} {today.strftime('%d.%m')} — Сегодня",
             callback_data=f"date:{today.isoformat()}"
         )])
 
     # Завтра
     tomorrow = today + timedelta(days=1)
+    day_name_tomorrow = DAYS_RU.get(tomorrow.strftime('%A'), tomorrow.strftime('%a'))
     is_closed, reason = is_date_closed_for_master(config, master_id, tomorrow) if config else (False, None)
     if is_closed:
         buttons.append([InlineKeyboardButton(
-            text=f"🚫 Завтра ({tomorrow.strftime('%d.%m')}) - закрыто",
+            text=f"🚫 {day_name_tomorrow} {tomorrow.strftime('%d.%m')} — Завтра (закрыто)",
             callback_data="date_closed"
         )])
     else:
         buttons.append([InlineKeyboardButton(
-            text=f"📅 Завтра ({tomorrow.strftime('%d.%m')})",
+            text=f"📅 {day_name_tomorrow} {tomorrow.strftime('%d.%m')} — Завтра",
             callback_data=f"date:{tomorrow.isoformat()}"
         )])
 
@@ -128,16 +131,21 @@ def generate_dates_keyboard(back_callback: str = "back_to_masters", config: dict
         is_closed, reason = is_date_closed_for_master(config, master_id, date) if config else (False, None)
         if is_closed:
             buttons.append([InlineKeyboardButton(
-                text=f"🚫 {day_name} {date.strftime('%d.%m')} - закрыто",
+                text=f"🚫 {day_name} {date.strftime('%d.%m')} (закрыто)",
                 callback_data="date_closed"
             )])
         else:
             buttons.append([InlineKeyboardButton(
-                text=f"{day_name} {date.strftime('%d.%m')}",
+                text=f"📅 {day_name} {date.strftime('%d.%m')}",
                 callback_data=f"date:{date.isoformat()}"
             )])
 
-    # Навигация через нижнее меню - inline кнопки не нужны
+    # Кнопка ручного ввода даты
+    buttons.append([InlineKeyboardButton(
+        text="📝 Ввести дату вручную",
+        callback_data="input_custom_date"
+    )])
+
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -337,23 +345,35 @@ async def start_booking_with_master(message: Message, state: FSMContext, config:
     categories = get_categories_from_services(services)
 
     if len(categories) > 1:
+        # Формируем информацию о мастере с услугами по категориям
+        specialization = master.get('specialization') or master.get('role', '')
+
+        text = f"📅 <b>Запись к мастеру: {master_name}</b>\n"
+        if specialization:
+            text += f"💼 Специализация: {specialization}\n"
+        text += "\n📋 <b>Услуги:</b>\n"
+
         buttons = []
         for cat in categories:
             # Фильтруем услуги по категории
             cat_services = [s for s in services if s.get('category', 'Другое') == cat]
             if cat_services:
+                # Показываем услуги категории в тексте
+                service_names = [s.get('name', '') for s in cat_services[:3]]
+                if len(cat_services) > 3:
+                    service_names.append(f"+{len(cat_services) - 3} ещё")
+                text += f"• <b>{cat}</b> — {', '.join(service_names)}\n"
+
                 buttons.append([InlineKeyboardButton(
                     text=f"📂 {cat}",
                     callback_data=f"cat:{cat}"
                 )])
+
+        text += "\nВыберите категорию:"
         # Кнопка "Отменить" убрана - используется "◀️ Назад" в нижнем меню
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await message.answer(
-            f"📅 Запись к мастеру: <b>{master_name}</b>\n\nВыберите категорию:",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
+        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
         await state.set_state(BookingState.choosing_category)
     else:
         await message.answer(f"📅 Запись к мастеру: <b>{master_name}</b>", parse_mode="HTML")
@@ -781,6 +801,73 @@ async def slot_taken_handler(callback: CallbackQuery):
 async def date_closed_handler(callback: CallbackQuery):
     """Обработчик клика по закрытой дате"""
     await callback.answer("❌ Мастер не работает в этот день", show_alert=True)
+
+
+# ==================== РУЧНОЙ ВВОД ДАТЫ ====================
+
+@router.callback_query(BookingState.choosing_date, F.data == "input_custom_date")
+async def input_custom_date_start(callback: CallbackQuery, state: FSMContext):
+    """Начать ручной ввод даты"""
+    await callback.message.edit_text(
+        "📝 <b>Введите дату в формате ДД.ММ.ГГГГ</b>\n\n"
+        "Например: 15.01.2025",
+        parse_mode="HTML"
+    )
+    await state.set_state(BookingState.input_custom_date)
+    await callback.answer()
+
+
+@router.message(BookingState.input_custom_date, F.text)
+async def process_custom_date(message: Message, state: FSMContext, config: dict, db_manager):
+    """Обработка введённой даты"""
+    text = message.text.strip()
+
+    # Пробуем разные форматы даты
+    date_formats = ['%d.%m.%Y', '%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d']
+    selected_date = None
+
+    for fmt in date_formats:
+        try:
+            selected_date = datetime.strptime(text, fmt).date()
+            break
+        except ValueError:
+            continue
+
+    if not selected_date:
+        await message.answer(
+            "❌ Неверный формат даты.\n\n"
+            "Введите дату в формате ДД.ММ.ГГГГ\n"
+            "Например: 15.01.2025"
+        )
+        return
+
+    # Проверка что дата не в прошлом
+    if selected_date < datetime.now().date():
+        await message.answer("❌ Нельзя выбрать прошедшую дату. Введите другую дату:")
+        return
+
+    # Проверка закрытой даты мастера
+    data = await state.get_data()
+    master_id = data.get('master_id')
+
+    is_closed, reason = is_date_closed_for_master(config, master_id, selected_date)
+    if is_closed:
+        reason_text = f" ({reason})" if reason else ""
+        await message.answer(f"❌ Мастер не работает в этот день{reason_text}. Введите другую дату:")
+        return
+
+    # Сохраняем дату и переходим к выбору времени
+    booking_date = selected_date.isoformat()
+    await state.update_data(booking_date=booking_date)
+
+    keyboard = generate_time_slots_keyboard(config, db_manager, booking_date, master_id=master_id)
+    date_formatted = selected_date.strftime('%d.%m.%Y')
+
+    await message.answer(
+        f"📅 Дата: {date_formatted}\n\nВыберите время:",
+        reply_markup=keyboard
+    )
+    await state.set_state(BookingState.choosing_time)
 
 
 # ==================== ВВОД ИМЕНИ ====================

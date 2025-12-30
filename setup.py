@@ -11,8 +11,8 @@ import subprocess
 import re
 
 # ==================== ВЕРСИЯ БОТА ====================
-BOT_VERSION = "2.1.8"
-BOT_BUILD_DATE = "2025-12-29"
+BOT_VERSION = "2.2.0"
+BOT_BUILD_DATE = "2025-12-30"
 # =====================================================
 
 TEMPLATES = {
