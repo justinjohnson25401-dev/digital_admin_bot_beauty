@@ -189,43 +189,86 @@ class ConfigMiddleware(BaseMiddleware):
 
 
 def get_admin_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Постоянная клавиатура админ-панели (стиль как в клиент-боте)"""
+    """Главная клавиатура админ-панели"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📅 Заказы"), KeyboardButton(text="💼 Услуги")],
+            [KeyboardButton(text="👤 Персонал"), KeyboardButton(text="⚙️ Настройки")],
+            [KeyboardButton(text="👥 Клиенты")],
+        ],
+        resize_keyboard=True
+    )
+
+
+def get_orders_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Клавиатура раздела Заказы (включает Статистику)"""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="📊 Статистика")],
-            [KeyboardButton(text="📅 Заказы"), KeyboardButton(text="💼 Услуги")],
-            [KeyboardButton(text="👤 Персонал"), KeyboardButton(text="⚙️ Настройки")],
-            [KeyboardButton(text="🎁 Акции"), KeyboardButton(text="❓ Помощь")],
-            [KeyboardButton(text="👥 Клиенты")]
+            [KeyboardButton(text="📅 Сегодня"), KeyboardButton(text="📅 Завтра")],
+            [KeyboardButton(text="📅 Неделя"), KeyboardButton(text="📥 CSV")],
+        ],
+        resize_keyboard=True
+    )
+
+
+def get_services_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Клавиатура раздела Услуги (включает Акции)"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="🎁 Акции")],
+            [KeyboardButton(text="📋 Список услуг"), KeyboardButton(text="➕ Добавить")],
+        ],
+        resize_keyboard=True
+    )
+
+
+def get_staff_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Клавиатура раздела Персонал"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="➕ Добавить мастера")],
+            [KeyboardButton(text="✏️ Редактировать"), KeyboardButton(text="📅 Закрытые даты")],
+        ],
+        resize_keyboard=True
+    )
+
+
+def get_settings_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Клавиатура раздела Настройки (включает Помощь)"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="❓ Помощь")],
+            [KeyboardButton(text="⚙️ Бизнес"), KeyboardButton(text="📝 Тексты")],
+            [KeyboardButton(text="🔔 Уведомления")],
+        ],
+        resize_keyboard=True
+    )
+
+
+def get_clients_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Клавиатура раздела Клиенты"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="🔍 Поиск")],
         ],
         resize_keyboard=True
     )
 
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Главное меню админ-панели"""
+    """Главное меню админ-панели (компактное)"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"),
-            InlineKeyboardButton(text="📋 Заказы", callback_data="admin_orders")
-        ],
-        [
-            InlineKeyboardButton(text="📝 Услуги", callback_data="admin_services"),
-            InlineKeyboardButton(text="👥 Клиенты", callback_data="admin_clients")
-        ],
-        [
-            InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="business_settings")
+            InlineKeyboardButton(text="📅 Заказы", callback_data="admin_orders"),
+            InlineKeyboardButton(text="💼 Услуги", callback_data="admin_services")
         ],
         [
             InlineKeyboardButton(text="👤 Персонал", callback_data="staff_menu"),
-            InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")
+            InlineKeyboardButton(text="⚙️ Настройки", callback_data="admin_settings")
         ],
         [
-            InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu"),
-            InlineKeyboardButton(text="⚙️ Система", callback_data="admin_settings")
-        ],
-        [
-            InlineKeyboardButton(text="❓ Помощь", callback_data="admin_help")
+            InlineKeyboardButton(text="👥 Клиенты", callback_data="admin_clients")
         ]
     ])
 
@@ -1105,66 +1148,41 @@ async def main():
     # ==================== ОБРАБОТЧИКИ НИЖНЕЙ КЛАВИАТУРЫ ====================
     # ВАЖНО: Регистрируем ДО подключения роутеров, чтобы они имели приоритет над FSM-хендлерами
 
-    async def reply_stats_handler(message: Message, state: FSMContext, config: dict, db_manager):
-        """Обработчик кнопки Статистика"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
+    async def reply_orders_handler(message: Message, state: FSMContext, config: dict, db_manager):
+        """Обработчик кнопки Заказы — меняет клавиатуру на контекстную"""
+        await state.clear()
         from datetime import datetime
 
         stats_today = db_manager.get_stats('today')
-        stats_week = db_manager.get_stats('week')
-        stats_month = db_manager.get_stats('month')
 
         text = (
-            f"📊 <b>Статистика</b>\n\n"
-            f"📅 Сегодня ({datetime.now().strftime('%d.%m.%Y')}):\n"
+            f"📅 <b>ЗАКАЗЫ</b>\n\n"
+            f"📊 Сегодня ({datetime.now().strftime('%d.%m.%Y')}):\n"
             f"├ Заказов: {stats_today['total_orders']}\n"
             f"└ Выручка: {stats_today['total_revenue']}₽\n\n"
-            f"📅 Эта неделя:\n"
-            f"├ Заказов: {stats_week['total_orders']}\n"
-            f"└ Выручка: {stats_week['total_revenue']}₽\n\n"
-            f"📅 Этот месяц:\n"
-            f"├ Заказов: {stats_month['total_orders']}\n"
-            f"└ Выручка: {stats_month['total_revenue']}₽"
+            f"Используйте кнопки внизу для навигации."
         )
 
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📊 Подробная статистика", callback_data="admin_stats")],
-        ])
-
-        await message.answer(text, reply_markup=keyboard)
-
-    async def reply_orders_handler(message: Message, state: FSMContext, config: dict, db_manager):
-        """Обработчик кнопки Заказы"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📅 Сегодня", callback_data="admin_orders"),
-                InlineKeyboardButton(text="📅 Завтра", callback_data="admin_orders_tomorrow"),
-            ],
-            [
-                InlineKeyboardButton(text="📅 Эта неделя", callback_data="admin_orders_week"),
-                InlineKeyboardButton(text="📆 Все будущие", callback_data="admin_orders_all_future"),
-            ],
-            [InlineKeyboardButton(text="📝 Выбрать диапазон", callback_data="admin_orders_custom_range")],
-        ])
-        await message.answer("📋 <b>Выберите период:</b>", reply_markup=keyboard)
+        await message.answer(text, reply_markup=get_orders_reply_keyboard())
 
     async def reply_services_handler(message: Message, state: FSMContext, config_manager):
-        """Обработчик кнопки Услуги"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
-        from admin_handlers.services_editor import get_services_keyboard
+        """Обработчик кнопки Услуги — меняет клавиатуру на контекстную"""
+        await state.clear()
         config = config_manager.get_config()
         services = config.get('services', [])
+        promotions = config.get('promotions', [])
+        active_promos = len([p for p in promotions if p.get('active', True)])
 
-        text = f"📋 <b>Услуги ({len(services)})</b>\n\n"
-        text += "Выберите услугу для редактирования или добавьте новую:"
+        text = f"💼 <b>УСЛУГИ И АКЦИИ</b>\n\n"
+        text += f"📋 Услуг: {len(services)}\n"
+        text += f"🎁 Акций: {active_promos} активных\n\n"
+        text += "Используйте кнопки внизу для навигации."
 
-        keyboard = get_services_keyboard(services)
-        await message.answer(text, reply_markup=keyboard)
+        await message.answer(text, reply_markup=get_services_reply_keyboard())
 
     async def reply_staff_handler(message: Message, state: FSMContext, config: dict):
-        """Обработчик кнопки Персонал"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
+        """Обработчик кнопки Персонал — меняет клавиатуру на контекстную"""
+        await state.clear()
         staff_data = config.get('staff', {})
         is_enabled = staff_data.get('enabled', False)
         masters = staff_data.get('masters', [])
@@ -1182,46 +1200,35 @@ async def main():
         else:
             text += "<i>Мастера не добавлены</i>\n\n"
 
-        toggle_text = "🔴 Выключить персонал" if is_enabled else "🟢 Включить персонал"
+        text += "Используйте кнопки внизу для навигации."
 
+        # Inline для toggle
+        toggle_text = "🔴 Выключить" if is_enabled else "🟢 Включить"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=toggle_text, callback_data="toggle_staff")],
-            [InlineKeyboardButton(text="➕ Добавить мастера", callback_data="add_master")],
-            [InlineKeyboardButton(text="✏️ Редактировать мастера", callback_data="edit_master_list")],
-            [InlineKeyboardButton(text="📅 Закрытые даты", callback_data="closed_dates_menu")],
             [InlineKeyboardButton(text="🗑 Удалить мастера", callback_data="delete_master_list")],
         ])
 
-        await message.answer(text, reply_markup=keyboard)
+        await message.answer(text, reply_markup=get_staff_reply_keyboard())
+        await message.answer("Дополнительные действия:", reply_markup=keyboard)
 
     async def reply_settings_handler(message: Message, state: FSMContext, config: dict):
-        """Обработчик кнопки Настройки"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="admin_settings")],
-            [InlineKeyboardButton(text="🎁 Акции", callback_data="promotions_menu")],
-            [InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")],
-            [InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu")],
-        ])
-        await message.answer("⚙️ <b>Настройки</b>\n\nВыберите раздел:", reply_markup=keyboard)
+        """Обработчик кнопки Настройки — меняет клавиатуру на контекстную"""
+        await state.clear()
 
-    async def reply_help_handler(message: Message, state: FSMContext):
-        """Обработчик кнопки Помощь"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
+        business_name = config.get('business_name', 'Не указано')
+        booking = config.get('booking', {})
+        work_start = int(booking.get('work_start', 10))
+        work_end = int(booking.get('work_end', 20))
+
         text = (
-            "❓ <b>Помощь</b>\n\n"
-            "<b>Кнопки меню:</b>\n"
-            "📊 Статистика — просмотр статистики\n"
-            "📅 Заказы — управление записями\n"
-            "💼 Услуги — редактирование услуг\n"
-            "👤 Персонал — управление мастерами\n"
-            "⚙️ Настройки — настройки бизнеса и акции\n\n"
-            "<b>Команды:</b>\n"
-            "/start — Главное меню\n\n"
-            "По вопросам обращайтесь к разработчику: @Oroani"
+            f"⚙️ <b>НАСТРОЙКИ</b>\n\n"
+            f"📍 Бизнес: {business_name}\n"
+            f"🕐 Часы: {work_start}:00 - {work_end}:00\n\n"
+            f"Используйте кнопки внизу для навигации."
         )
 
-        await message.answer(text)
+        await message.answer(text, reply_markup=get_settings_reply_keyboard())
 
     async def reply_back_handler(message: Message, state: FSMContext, config: dict, db_manager):
         """Обработчик кнопки Назад - возврат на предыдущий шаг или в главное меню"""
@@ -1376,37 +1383,10 @@ async def main():
 
         await message.answer(text, reply_markup=get_admin_reply_keyboard())
 
-    async def reply_promotions_handler(message: Message, state: FSMContext, config: dict):
-        """Обработчик кнопки Акции"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
-        promotions = config.get('promotions', [])
-
-        text = "🎁 <b>УПРАВЛЕНИЕ АКЦИЯМИ</b>\n\n"
-
-        if promotions:
-            text += f"Активных акций: {len([p for p in promotions if p.get('active', True)])}\n"
-            text += f"Всего акций: {len(promotions)}\n\n"
-
-            for i, promo in enumerate(promotions):
-                status = "✅" if promo.get('active', True) else "❌"
-                emoji = promo.get('emoji', '🎁')
-                title = promo.get('title', 'Без названия')
-                text += f"{status} {emoji} {title}\n"
-        else:
-            text += "<i>Акции ещё не добавлены</i>\n"
-
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="➕ Добавить акцию", callback_data="add_promotion")],
-            [InlineKeyboardButton(text="📋 Управлять акциями", callback_data="promotions_menu")],
-        ])
-
-        await message.answer(text, reply_markup=keyboard)
-
     async def reply_clients_handler(message: Message, state: FSMContext, db_manager):
-        """Обработчик кнопки Клиенты"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
+        """Обработчик кнопки Клиенты — меняет клавиатуру на контекстную"""
+        await state.clear()
 
-        # Получаем список клиентов с базовой статистикой
         cursor = db_manager.connection.cursor()
         cursor.execute("""
             SELECT
@@ -1445,18 +1425,278 @@ async def main():
                     text += f"   📱 {last_phone}\n"
                 text += "\n"
 
+        await message.answer(text, reply_markup=get_clients_reply_keyboard())
+
+    # ==================== ОБРАБОТЧИКИ ДИНАМИЧЕСКИХ КНОПОК ====================
+
+    # --- Раздел ЗАКАЗЫ ---
+    async def reply_stats_handler(message: Message, state: FSMContext, config: dict, db_manager):
+        """Подробная статистика"""
+        from datetime import datetime
+        stats_today = db_manager.get_stats('today')
+        stats_week = db_manager.get_stats('week')
+        stats_month = db_manager.get_stats('month')
+
+        text = (
+            f"📊 <b>СТАТИСТИКА</b>\n\n"
+            f"📅 Сегодня ({datetime.now().strftime('%d.%m.%Y')}):\n"
+            f"├ Заказов: {stats_today['total_orders']}\n"
+            f"└ Выручка: {stats_today['total_revenue']}₽\n\n"
+            f"📅 Эта неделя:\n"
+            f"├ Заказов: {stats_week['total_orders']}\n"
+            f"└ Выручка: {stats_week['total_revenue']}₽\n\n"
+            f"📅 Этот месяц:\n"
+            f"├ Заказов: {stats_month['total_orders']}\n"
+            f"└ Выручка: {stats_month['total_revenue']}₽\n\n"
+            f"🏆 Топ услуги (месяц):\n"
+        )
+        for i, (service, count) in enumerate(stats_month['top_services'][:5], 1):
+            text += f"{i}. {service} ({count} шт.)\n"
+
         await message.answer(text)
 
-    # Регистрируем обработчики нижней клавиатуры ПЕРВЫМИ (до роутеров!)
+    async def reply_orders_today_handler(message: Message, db_manager, config: dict):
+        """Заказы на сегодня"""
+        # Используем существующий callback handler через эмуляцию
+        from datetime import datetime
+        tz_offset = config.get('timezone_offset_hours')
+        tz_modifier = f"{int(tz_offset):+d} hours" if tz_offset else "localtime"
+
+        cursor = db_manager.connection.cursor()
+        cursor.execute("""
+            SELECT id, service_name, booking_date, booking_time, client_name, phone, price
+            FROM orders WHERE status = 'active' AND booking_date = date('now', ?)
+            ORDER BY booking_time LIMIT 10
+        """, (tz_modifier,))
+        orders = cursor.fetchall()
+
+        text = f"📅 <b>Заказы на сегодня</b> ({datetime.now().strftime('%d.%m.%Y')})\n\n"
+        if not orders:
+            text += "<i>Нет заказов</i>"
+        else:
+            for oid, service, date, time, name, phone, price in orders:
+                text += f"#{oid} — {time or '?'}\n└ {service} ({price}₽) — {name}\n\n"
+
+        await message.answer(text)
+
+    async def reply_orders_tomorrow_handler(message: Message, db_manager, config: dict):
+        """Заказы на завтра"""
+        from datetime import datetime, timedelta
+        tz_offset = config.get('timezone_offset_hours')
+        tz_modifier = f"{int(tz_offset):+d} hours" if tz_offset else "localtime"
+
+        cursor = db_manager.connection.cursor()
+        cursor.execute("""
+            SELECT id, service_name, booking_date, booking_time, client_name, phone, price
+            FROM orders WHERE status = 'active' AND booking_date = date('now', ?, '+1 day')
+            ORDER BY booking_time LIMIT 10
+        """, (tz_modifier,))
+        orders = cursor.fetchall()
+
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime('%d.%m.%Y')
+        text = f"📅 <b>Заказы на завтра</b> ({tomorrow})\n\n"
+        if not orders:
+            text += "<i>Нет заказов</i>"
+        else:
+            for oid, service, date, time, name, phone, price in orders:
+                text += f"#{oid} — {time or '?'}\n└ {service} ({price}₽) — {name}\n\n"
+
+        await message.answer(text)
+
+    async def reply_orders_week_handler(message: Message, db_manager, config: dict):
+        """Заказы на неделю"""
+        tz_offset = config.get('timezone_offset_hours')
+        tz_modifier = f"{int(tz_offset):+d} hours" if tz_offset else "localtime"
+
+        cursor = db_manager.connection.cursor()
+        cursor.execute("""
+            SELECT id, service_name, booking_date, booking_time, client_name, price
+            FROM orders WHERE status = 'active'
+              AND booking_date >= date('now', ?)
+              AND booking_date <= date('now', ?, '+7 days')
+            ORDER BY booking_date, booking_time LIMIT 15
+        """, (tz_modifier, tz_modifier))
+        orders = cursor.fetchall()
+
+        text = f"📅 <b>Заказы на неделю</b>\n\n"
+        if not orders:
+            text += "<i>Нет заказов</i>"
+        else:
+            from datetime import datetime
+            for oid, service, date, time, name, price in orders:
+                try:
+                    date_fmt = datetime.fromisoformat(date).strftime('%d.%m')
+                except:
+                    date_fmt = date
+                text += f"#{oid} — {date_fmt} {time or ''}\n└ {service} ({price}₽)\n\n"
+
+        await message.answer(text)
+
+    async def reply_csv_handler(message: Message, db_manager):
+        """Выгрузить CSV"""
+        from datetime import datetime
+        try:
+            csv_data = db_manager.get_orders_csv(days=30)
+            filename = f"orders_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            document = BufferedInputFile(csv_data, filename=filename)
+            await message.answer_document(document, caption="📥 Заказы за последние 30 дней")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка экспорта: {e}")
+
+    # --- Раздел УСЛУГИ ---
+    async def reply_promotions_handler(message: Message, state: FSMContext, config: dict):
+        """Управление акциями"""
+        await state.clear()
+        promotions = config.get('promotions', [])
+
+        text = "🎁 <b>АКЦИИ</b>\n\n"
+        if promotions:
+            for promo in promotions:
+                status = "✅" if promo.get('active', True) else "❌"
+                text += f"{status} {promo.get('emoji', '🎁')} {promo.get('title', 'Без названия')}\n"
+        else:
+            text += "<i>Акций нет</i>\n"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить акцию", callback_data="add_promotion")],
+            [InlineKeyboardButton(text="📋 Управлять", callback_data="promotions_menu")],
+        ])
+        await message.answer(text, reply_markup=keyboard)
+
+    async def reply_services_list_handler(message: Message, config_manager):
+        """Список услуг"""
+        from admin_handlers.services_editor import get_services_keyboard
+        config = config_manager.get_config()
+        services = config.get('services', [])
+
+        text = f"📋 <b>УСЛУГИ</b> ({len(services)})\n\n"
+        keyboard = get_services_keyboard(services)
+        await message.answer(text, reply_markup=keyboard)
+
+    async def reply_add_service_handler(message: Message, state: FSMContext):
+        """Добавить услугу — переход к FSM"""
+        from admin_handlers.services_editor import ServiceEditStates
+        await state.set_state(ServiceEditStates.add_name)
+        await message.answer("📝 Введите название новой услуги:")
+
+    # --- Раздел ПЕРСОНАЛ ---
+    async def reply_add_master_handler(message: Message, state: FSMContext):
+        """Добавить мастера"""
+        from admin_bot.states import StaffEditorStates
+        await state.set_state(StaffEditorStates.enter_name)
+        text = """
+➕ <b>ДОБАВЛЕНИЕ МАСТЕРА</b>
+
+Шаг 1 из 5: Введите имя мастера (от 2 до 50 символов):
+
+<i>Например: Анна, Мария Иванова</i>
+"""
+        await message.answer(text)
+
+    async def reply_edit_master_handler(message: Message, config: dict):
+        """Редактировать мастера"""
+        masters = config.get('staff', {}).get('masters', [])
+        if not masters:
+            await message.answer("❌ Мастера не добавлены")
+            return
+
+        keyboard_rows = []
+        for master in masters:
+            keyboard_rows.append([InlineKeyboardButton(
+                text=f"✏️ {master['name']}",
+                callback_data=f"edit_master_{master['id']}"
+            )])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+        await message.answer("Выберите мастера для редактирования:", reply_markup=keyboard)
+
+    async def reply_closed_dates_handler(message: Message, config: dict):
+        """Закрытые даты"""
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📅 Управление датами", callback_data="closed_dates_menu")],
+        ])
+        await message.answer("📅 <b>Закрытые даты</b>\n\nВыберите мастера для управления:", reply_markup=keyboard)
+
+    # --- Раздел НАСТРОЙКИ ---
+    async def reply_help_handler(message: Message):
+        """Помощь"""
+        text = (
+            "❓ <b>ПОМОЩЬ</b>\n\n"
+            "<b>Навигация:</b>\n"
+            "• Нажимайте кнопки внизу экрана\n"
+            "• ◀️ Назад — возврат в главное меню\n\n"
+            "<b>Разделы:</b>\n"
+            "📅 Заказы — записи + статистика\n"
+            "💼 Услуги — услуги + акции\n"
+            "👤 Персонал — мастера + график\n"
+            "⚙️ Настройки — бизнес + тексты\n"
+            "👥 Клиенты — база клиентов\n\n"
+            "По вопросам: @Oroani"
+        )
+        await message.answer(text)
+
+    async def reply_business_settings_handler(message: Message):
+        """Настройки бизнеса"""
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚙️ Открыть настройки", callback_data="admin_settings")],
+        ])
+        await message.answer("⚙️ <b>Настройки бизнеса</b>", reply_markup=keyboard)
+
+    async def reply_texts_handler(message: Message):
+        """Тексты бота"""
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📝 Редактировать тексты", callback_data="texts_menu")],
+        ])
+        await message.answer("📝 <b>Тексты бота</b>", reply_markup=keyboard)
+
+    async def reply_notifications_handler(message: Message):
+        """Уведомления"""
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔔 Настроить уведомления", callback_data="notifications_menu")],
+        ])
+        await message.answer("🔔 <b>Уведомления</b>", reply_markup=keyboard)
+
+    # --- Раздел КЛИЕНТЫ ---
+    async def reply_search_clients_handler(message: Message):
+        """Поиск клиентов (заглушка)"""
+        await message.answer("🔍 <b>Поиск клиентов</b>\n\n<i>Функция в разработке</i>")
+
+    # ==================== РЕГИСТРАЦИЯ ОБРАБОТЧИКОВ ====================
+    # ВАЖНО: Регистрируем ДО подключения роутеров, чтобы они имели приоритет
+
+    # Главное меню
     dp.message.register(reply_back_handler, F.text == "◀️ Назад")
-    dp.message.register(reply_stats_handler, F.text == "📊 Статистика")
     dp.message.register(reply_orders_handler, F.text == "📅 Заказы")
     dp.message.register(reply_services_handler, F.text == "💼 Услуги")
     dp.message.register(reply_staff_handler, F.text == "👤 Персонал")
     dp.message.register(reply_settings_handler, F.text == "⚙️ Настройки")
-    dp.message.register(reply_promotions_handler, F.text == "🎁 Акции")
-    dp.message.register(reply_help_handler, F.text == "❓ Помощь")
     dp.message.register(reply_clients_handler, F.text == "👥 Клиенты")
+
+    # Раздел ЗАКАЗЫ
+    dp.message.register(reply_stats_handler, F.text == "📊 Статистика")
+    dp.message.register(reply_orders_today_handler, F.text == "📅 Сегодня")
+    dp.message.register(reply_orders_tomorrow_handler, F.text == "📅 Завтра")
+    dp.message.register(reply_orders_week_handler, F.text == "📅 Неделя")
+    dp.message.register(reply_csv_handler, F.text == "📥 CSV")
+
+    # Раздел УСЛУГИ
+    dp.message.register(reply_promotions_handler, F.text == "🎁 Акции")
+    dp.message.register(reply_services_list_handler, F.text == "📋 Список услуг")
+    dp.message.register(reply_add_service_handler, F.text == "➕ Добавить")
+
+    # Раздел ПЕРСОНАЛ
+    dp.message.register(reply_add_master_handler, F.text == "➕ Добавить мастера")
+    dp.message.register(reply_edit_master_handler, F.text == "✏️ Редактировать")
+    dp.message.register(reply_closed_dates_handler, F.text == "📅 Закрытые даты")
+
+    # Раздел НАСТРОЙКИ
+    dp.message.register(reply_help_handler, F.text == "❓ Помощь")
+    dp.message.register(reply_business_settings_handler, F.text == "⚙️ Бизнес")
+    dp.message.register(reply_texts_handler, F.text == "📝 Тексты")
+    dp.message.register(reply_notifications_handler, F.text == "🔔 Уведомления")
+
+    # Раздел КЛИЕНТЫ
+    dp.message.register(reply_search_clients_handler, F.text == "🔍 Поиск")
 
     # Подключаем роутеры для редактирования (ПОСЛЕ обработчиков нижней клавиатуры!)
     dp.include_router(services_editor.router)
