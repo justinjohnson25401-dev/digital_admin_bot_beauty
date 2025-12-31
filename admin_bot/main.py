@@ -189,43 +189,36 @@ class ConfigMiddleware(BaseMiddleware):
 
 
 def get_admin_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Постоянная клавиатура админ-панели (стиль как в клиент-боте)"""
+    """Компактная клавиатура админ-панели
+
+    Вложенность:
+    - Статистика → внутри Заказы
+    - Акции → внутри Услуги
+    - Помощь → внутри Настройки
+    """
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="📊 Статистика")],
             [KeyboardButton(text="📅 Заказы"), KeyboardButton(text="💼 Услуги")],
             [KeyboardButton(text="👤 Персонал"), KeyboardButton(text="⚙️ Настройки")],
-            [KeyboardButton(text="🎁 Акции"), KeyboardButton(text="❓ Помощь")],
-            [KeyboardButton(text="👥 Клиенты")]
+            [KeyboardButton(text="👥 Клиенты"), KeyboardButton(text="◀️ Назад")],
         ],
         resize_keyboard=True
     )
 
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Главное меню админ-панели"""
+    """Главное меню админ-панели (компактное)"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"),
-            InlineKeyboardButton(text="📋 Заказы", callback_data="admin_orders")
-        ],
-        [
-            InlineKeyboardButton(text="📝 Услуги", callback_data="admin_services"),
-            InlineKeyboardButton(text="👥 Клиенты", callback_data="admin_clients")
-        ],
-        [
-            InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="business_settings")
+            InlineKeyboardButton(text="📅 Заказы", callback_data="admin_orders"),
+            InlineKeyboardButton(text="💼 Услуги", callback_data="admin_services")
         ],
         [
             InlineKeyboardButton(text="👤 Персонал", callback_data="staff_menu"),
-            InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")
+            InlineKeyboardButton(text="⚙️ Настройки", callback_data="admin_settings")
         ],
         [
-            InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu"),
-            InlineKeyboardButton(text="⚙️ Система", callback_data="admin_settings")
-        ],
-        [
-            InlineKeyboardButton(text="❓ Помощь", callback_data="admin_help")
+            InlineKeyboardButton(text="👥 Клиенты", callback_data="admin_clients")
         ]
     ])
 
@@ -1105,38 +1098,24 @@ async def main():
     # ==================== ОБРАБОТЧИКИ НИЖНЕЙ КЛАВИАТУРЫ ====================
     # ВАЖНО: Регистрируем ДО подключения роутеров, чтобы они имели приоритет над FSM-хендлерами
 
-    async def reply_stats_handler(message: Message, state: FSMContext, config: dict, db_manager):
-        """Обработчик кнопки Статистика"""
+    async def reply_orders_handler(message: Message, state: FSMContext, config: dict, db_manager):
+        """Обработчик кнопки Заказы (включает статистику)"""
         await state.clear()  # Очищаем FSM при нажатии на меню
         from datetime import datetime
 
+        # Показываем краткую статистику сразу
         stats_today = db_manager.get_stats('today')
-        stats_week = db_manager.get_stats('week')
-        stats_month = db_manager.get_stats('month')
 
         text = (
-            f"📊 <b>Статистика</b>\n\n"
-            f"📅 Сегодня ({datetime.now().strftime('%d.%m.%Y')}):\n"
+            f"📅 <b>ЗАКАЗЫ</b>\n\n"
+            f"📊 Сегодня ({datetime.now().strftime('%d.%m.%Y')}):\n"
             f"├ Заказов: {stats_today['total_orders']}\n"
             f"└ Выручка: {stats_today['total_revenue']}₽\n\n"
-            f"📅 Эта неделя:\n"
-            f"├ Заказов: {stats_week['total_orders']}\n"
-            f"└ Выручка: {stats_week['total_revenue']}₽\n\n"
-            f"📅 Этот месяц:\n"
-            f"├ Заказов: {stats_month['total_orders']}\n"
-            f"└ Выручка: {stats_month['total_revenue']}₽"
+            f"Выберите период или действие:"
         )
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Подробная статистика", callback_data="admin_stats")],
-        ])
-
-        await message.answer(text, reply_markup=keyboard)
-
-    async def reply_orders_handler(message: Message, state: FSMContext, config: dict, db_manager):
-        """Обработчик кнопки Заказы"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="📅 Сегодня", callback_data="admin_orders"),
                 InlineKeyboardButton(text="📅 Завтра", callback_data="admin_orders_tomorrow"),
@@ -1146,20 +1125,29 @@ async def main():
                 InlineKeyboardButton(text="📆 Все будущие", callback_data="admin_orders_all_future"),
             ],
             [InlineKeyboardButton(text="📝 Выбрать диапазон", callback_data="admin_orders_custom_range")],
+            [InlineKeyboardButton(text="📥 Выгрузить CSV", callback_data="admin_export_csv")],
         ])
-        await message.answer("📋 <b>Выберите период:</b>", reply_markup=keyboard)
+        await message.answer(text, reply_markup=keyboard)
 
     async def reply_services_handler(message: Message, state: FSMContext, config_manager):
-        """Обработчик кнопки Услуги"""
+        """Обработчик кнопки Услуги (включает акции)"""
         await state.clear()  # Очищаем FSM при нажатии на меню
-        from admin_handlers.services_editor import get_services_keyboard
         config = config_manager.get_config()
         services = config.get('services', [])
+        promotions = config.get('promotions', [])
+        active_promos = len([p for p in promotions if p.get('active', True)])
 
-        text = f"📋 <b>Услуги ({len(services)})</b>\n\n"
-        text += "Выберите услугу для редактирования или добавьте новую:"
+        text = f"💼 <b>УСЛУГИ И АКЦИИ</b>\n\n"
+        text += f"📋 Услуг: {len(services)}\n"
+        text += f"🎁 Акций: {active_promos} активных\n\n"
+        text += "Выберите действие:"
 
-        keyboard = get_services_keyboard(services)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Управление услугами", callback_data="admin_services")],
+            [InlineKeyboardButton(text="🎁 Управление акциями", callback_data="promotions_menu")],
+            [InlineKeyboardButton(text="➕ Добавить услугу", callback_data="add_service")],
+            [InlineKeyboardButton(text="➕ Добавить акцию", callback_data="add_promotion")],
+        ])
         await message.answer(text, reply_markup=keyboard)
 
     async def reply_staff_handler(message: Message, state: FSMContext, config: dict):
@@ -1195,33 +1183,28 @@ async def main():
         await message.answer(text, reply_markup=keyboard)
 
     async def reply_settings_handler(message: Message, state: FSMContext, config: dict):
-        """Обработчик кнопки Настройки"""
+        """Обработчик кнопки Настройки (включает помощь)"""
         await state.clear()  # Очищаем FSM при нажатии на меню
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="admin_settings")],
-            [InlineKeyboardButton(text="🎁 Акции", callback_data="promotions_menu")],
-            [InlineKeyboardButton(text="📝 Тексты", callback_data="texts_menu")],
-            [InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu")],
-        ])
-        await message.answer("⚙️ <b>Настройки</b>\n\nВыберите раздел:", reply_markup=keyboard)
 
-    async def reply_help_handler(message: Message, state: FSMContext):
-        """Обработчик кнопки Помощь"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
+        business_name = config.get('business_name', 'Не указано')
+        booking = config.get('booking', {})
+        work_start = int(booking.get('work_start', 10))
+        work_end = int(booking.get('work_end', 20))
+
         text = (
-            "❓ <b>Помощь</b>\n\n"
-            "<b>Кнопки меню:</b>\n"
-            "📊 Статистика — просмотр статистики\n"
-            "📅 Заказы — управление записями\n"
-            "💼 Услуги — редактирование услуг\n"
-            "👤 Персонал — управление мастерами\n"
-            "⚙️ Настройки — настройки бизнеса и акции\n\n"
-            "<b>Команды:</b>\n"
-            "/start — Главное меню\n\n"
-            "По вопросам обращайтесь к разработчику: @Oroani"
+            f"⚙️ <b>НАСТРОЙКИ</b>\n\n"
+            f"📍 Бизнес: {business_name}\n"
+            f"🕐 Часы: {work_start}:00 - {work_end}:00\n\n"
+            f"Выберите раздел:"
         )
 
-        await message.answer(text)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚙️ Настройки бизнеса", callback_data="admin_settings")],
+            [InlineKeyboardButton(text="📝 Тексты бота", callback_data="texts_menu")],
+            [InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications_menu")],
+            [InlineKeyboardButton(text="❓ Помощь", callback_data="admin_help")],
+        ])
+        await message.answer(text, reply_markup=keyboard)
 
     async def reply_back_handler(message: Message, state: FSMContext, config: dict, db_manager):
         """Обработчик кнопки Назад - возврат на предыдущий шаг или в главное меню"""
@@ -1376,32 +1359,6 @@ async def main():
 
         await message.answer(text, reply_markup=get_admin_reply_keyboard())
 
-    async def reply_promotions_handler(message: Message, state: FSMContext, config: dict):
-        """Обработчик кнопки Акции"""
-        await state.clear()  # Очищаем FSM при нажатии на меню
-        promotions = config.get('promotions', [])
-
-        text = "🎁 <b>УПРАВЛЕНИЕ АКЦИЯМИ</b>\n\n"
-
-        if promotions:
-            text += f"Активных акций: {len([p for p in promotions if p.get('active', True)])}\n"
-            text += f"Всего акций: {len(promotions)}\n\n"
-
-            for i, promo in enumerate(promotions):
-                status = "✅" if promo.get('active', True) else "❌"
-                emoji = promo.get('emoji', '🎁')
-                title = promo.get('title', 'Без названия')
-                text += f"{status} {emoji} {title}\n"
-        else:
-            text += "<i>Акции ещё не добавлены</i>\n"
-
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="➕ Добавить акцию", callback_data="add_promotion")],
-            [InlineKeyboardButton(text="📋 Управлять акциями", callback_data="promotions_menu")],
-        ])
-
-        await message.answer(text, reply_markup=keyboard)
-
     async def reply_clients_handler(message: Message, state: FSMContext, db_manager):
         """Обработчик кнопки Клиенты"""
         await state.clear()  # Очищаем FSM при нажатии на меню
@@ -1448,14 +1405,12 @@ async def main():
         await message.answer(text)
 
     # Регистрируем обработчики нижней клавиатуры ПЕРВЫМИ (до роутеров!)
+    # Компактная клавиатура: Заказы(+Статистика), Услуги(+Акции), Персонал, Настройки(+Помощь), Клиенты, Назад
     dp.message.register(reply_back_handler, F.text == "◀️ Назад")
-    dp.message.register(reply_stats_handler, F.text == "📊 Статистика")
     dp.message.register(reply_orders_handler, F.text == "📅 Заказы")
     dp.message.register(reply_services_handler, F.text == "💼 Услуги")
     dp.message.register(reply_staff_handler, F.text == "👤 Персонал")
     dp.message.register(reply_settings_handler, F.text == "⚙️ Настройки")
-    dp.message.register(reply_promotions_handler, F.text == "🎁 Акции")
-    dp.message.register(reply_help_handler, F.text == "❓ Помощь")
     dp.message.register(reply_clients_handler, F.text == "👥 Клиенты")
 
     # Подключаем роутеры для редактирования (ПОСЛЕ обработчиков нижней клавиатуры!)
