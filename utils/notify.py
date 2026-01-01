@@ -77,6 +77,10 @@ async def send_order_to_admins(bot: Bot, admin_ids: list, order_data: dict, busi
         f"Цена: {order_data['price']}₽\n"
     )
 
+    # Мастер (если указан)
+    if order_data.get('master_name'):
+        message_text += f"Мастер: {order_data['master_name']}\n"
+
     # Дата и время записи
     if order_data.get('booking_date'):
         try:

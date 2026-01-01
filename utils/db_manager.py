@@ -581,7 +581,7 @@ class DBManager:
             return []
 
     def get_stats(self, period: str = 'today') -> dict:
-        """Получение статистики"""
+        """Получение статистики с разделением на текущую и планируемую выручку"""
         try:
             self._ensure_connection()
             cursor = self.connection.cursor()
@@ -593,12 +593,20 @@ class DBManager:
             else:
                 date_filter = "date('now', '-30 days')"
 
-            # Количество заявок
+            # Количество заявок (все)
             cursor.execute(f"""
                 SELECT COUNT(*) FROM orders
                 WHERE created_at >= {date_filter} AND status = 'active'
             """)
             total_orders = cursor.fetchone()[0]
+
+            # Количество будущих заявок (booking_date > today)
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM orders
+                WHERE created_at >= {date_filter} AND status = 'active'
+                AND booking_date > date('now')
+            """)
+            planned_orders = cursor.fetchone()[0]
 
             # Топ услуг
             cursor.execute(f"""
@@ -611,12 +619,21 @@ class DBManager:
             """)
             top_services = cursor.fetchall()
 
-            # Общая сумма
+            # Выручка от завершённых/сегодняшних заказов (booking_date <= today)
             cursor.execute(f"""
                 SELECT SUM(price) FROM orders
                 WHERE created_at >= {date_filter} AND status = 'active'
+                AND (booking_date IS NULL OR booking_date <= date('now'))
             """)
             total_revenue = cursor.fetchone()[0] or 0
+
+            # Планируемая выручка (будущие заказы: booking_date > today)
+            cursor.execute(f"""
+                SELECT SUM(price) FROM orders
+                WHERE created_at >= {date_filter} AND status = 'active'
+                AND booking_date > date('now')
+            """)
+            planned_revenue = cursor.fetchone()[0] or 0
 
             # Новых клиентов за период
             cursor.execute(f"""
@@ -627,14 +644,16 @@ class DBManager:
 
             return {
                 'total_orders': total_orders,
+                'planned_orders': planned_orders,
                 'top_services': [(name, count) for name, count in top_services],
                 'total_revenue': total_revenue,
+                'planned_revenue': planned_revenue,
                 'new_clients': new_clients
             }
 
         except sqlite3.Error as e:
             logger.error(f"Error getting stats: {e}")
-            return {'total_orders': 0, 'top_services': [], 'total_revenue': 0, 'new_clients': 0}
+            return {'total_orders': 0, 'planned_orders': 0, 'top_services': [], 'total_revenue': 0, 'planned_revenue': 0, 'new_clients': 0}
 
     def get_orders_csv(self, days: int = 30) -> bytes:
         """Получение заказов за последние N дней в формате CSV"""

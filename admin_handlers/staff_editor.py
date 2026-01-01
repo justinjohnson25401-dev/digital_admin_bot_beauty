@@ -320,7 +320,7 @@ async def toggle_day_selection(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "days_done", StaffEditorStates.choose_schedule_days)
-async def days_selected(callback: CallbackQuery, state: FSMContext):
+async def days_selected(callback: CallbackQuery, state: FSMContext, config: dict):
     """Дни выбраны, переходим к выбору времени работы"""
 
     data = await state.get_data()
@@ -339,6 +339,11 @@ async def days_selected(callback: CallbackQuery, state: FSMContext):
     sorted_days = [d for d in days_order if d in selected_days]
     days_text = ', '.join([days_short[d] for d in sorted_days])
 
+    # Получаем часы работы бизнеса из конфига
+    booking = config.get('booking', {})
+    business_start = int(booking.get('work_start', 10))
+    business_end = int(booking.get('work_end', 20))
+
     text = f"""
 ✅ Имя: <b>{data['master_name']}</b>
 ✅ Должность: <b>{data['master_role']}</b>
@@ -346,19 +351,156 @@ async def days_selected(callback: CallbackQuery, state: FSMContext):
 ✅ Дни: <b>{days_text}</b>
 
 Шаг 5 из 5: Выберите время работы:
+
+<i>💡 Часы работы бизнеса: {business_start:02d}:00 - {business_end:02d}:00</i>
 """
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"⭐ По графику бизнеса ({business_start:02d}:00 - {business_end:02d}:00)", callback_data=f"hours_{business_start:02d}_{business_end:02d}")],
         [InlineKeyboardButton(text="🕘 09:00 - 18:00", callback_data="hours_09_18")],
         [InlineKeyboardButton(text="🕙 10:00 - 19:00", callback_data="hours_10_19")],
         [InlineKeyboardButton(text="🕙 10:00 - 20:00", callback_data="hours_10_20")],
-        [InlineKeyboardButton(text="🕙 10:00 - 21:00", callback_data="hours_10_21")],
         [InlineKeyboardButton(text="🕛 12:00 - 21:00", callback_data="hours_12_21")],
+        [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data="hours_custom")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
     await state.set_state(StaffEditorStates.choose_schedule_hours)
     await callback.answer()
+
+
+@router.callback_query(F.data == "hours_custom", StaffEditorStates.choose_schedule_hours)
+async def hours_custom_start(callback: CallbackQuery, state: FSMContext):
+    """Начать ручной ввод времени работы"""
+
+    text = """
+✏️ <b>РУЧНОЙ ВВОД ВРЕМЕНИ</b>
+
+Введите время работы в формате: <b>ЧЧ:ММ-ЧЧ:ММ</b>
+
+Примеры:
+• 09:00-18:00
+• 10:30-19:30
+• 08:00-22:00
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="days_done_back")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.enter_custom_hours)
+    await callback.answer()
+
+
+@router.message(StaffEditorStates.enter_custom_hours)
+async def hours_custom_save(message: Message, state: FSMContext, config: dict, config_manager):
+    """Сохранить мастера с ручным временем работы"""
+    import re
+
+    hours_text = message.text.strip()
+
+    # Проверяем формат
+    match = re.match(r'^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$', hours_text)
+    if not match:
+        await message.answer("❌ Неверный формат. Введите в формате ЧЧ:ММ-ЧЧ:ММ\n\nПример: 10:00-19:00")
+        return
+
+    start_h, start_m, end_h, end_m = map(int, match.groups())
+
+    # Валидация
+    if start_h > 23 or end_h > 23 or start_m > 59 or end_m > 59:
+        await message.answer("❌ Некорректное время. Часы: 0-23, минуты: 0-59")
+        return
+
+    if start_h > end_h or (start_h == end_h and start_m >= end_m):
+        await message.answer("❌ Время начала должно быть раньше времени окончания")
+        return
+
+    start_time = f"{start_h:02d}:{start_m:02d}"
+    end_time = f"{end_h:02d}:{end_m:02d}"
+
+    data = await state.get_data()
+    selected_days = data.get('selected_days', [])
+
+    # Создаём график
+    schedule = {}
+    all_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for day in all_days:
+        if day in selected_days:
+            schedule[day] = {"working": True, "start": start_time, "end": end_time}
+        else:
+            schedule[day] = {"working": False}
+
+    try:
+        if not data.get('master_name') or not data.get('master_role'):
+            await message.answer("❌ Ошибка: данные мастера не найдены. Начните заново.")
+            await state.clear()
+            return
+
+        if not data.get('selected_services'):
+            await message.answer("❌ Ошибка: услуги не выбраны. Начните заново.")
+            await state.clear()
+            return
+
+        master_data = {
+            "name": data['master_name'],
+            "specialization": data['master_role'],
+            "role": data['master_role'],
+            "photo_url": None,
+            "services": data['selected_services'],
+            "schedule": schedule,
+            "closed_dates": []
+        }
+
+        editor = get_config_editor(config)
+        master_id = editor.add_master(master_data)
+
+        if not master_id:
+            raise ValueError("add_master вернул пустой ID")
+
+        if 'staff' not in config:
+            config['staff'] = {'enabled': False, 'masters': []}
+
+        master_data['id'] = master_id
+        config['staff']['masters'].append(master_data)
+        config_manager.config['staff'] = config['staff']
+
+        days_short = {
+            'monday': 'Пн', 'tuesday': 'Вт', 'wednesday': 'Ср',
+            'thursday': 'Чт', 'friday': 'Пт', 'saturday': 'Сб', 'sunday': 'Вс'
+        }
+        days_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        sorted_days = [d for d in days_order if d in selected_days]
+        days_text = ', '.join([days_short[d] for d in sorted_days])
+
+        text = f"""
+✅ <b>МАСТЕР ДОБАВЛЕН!</b>
+
+👤 <b>{data['master_name']}</b>
+💼 {data['master_role']}
+📋 Услуг: {len(data['selected_services'])}
+📅 График: {days_text}, {start_time}-{end_time}
+
+<i>ID мастера: {master_id}</i>
+"""
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+        ])
+
+        await message.answer(text, reply_markup=keyboard)
+        logger.info(f"Master {master_id} ({data['master_name']}) added with custom hours by admin {message.from_user.id}")
+
+    except Exception as e:
+        logger.error(f"Error adding master with custom hours: {e}", exc_info=True)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Попробовать снова", callback_data="add_master")],
+            [InlineKeyboardButton(text="👤 К персоналу", callback_data="staff_menu")],
+        ])
+        await message.answer(f"❌ Ошибка при добавлении мастера: {str(e)[:100]}", reply_markup=keyboard)
+
+    await state.clear()
 
 
 @router.callback_query(F.data.startswith("hours_"), StaffEditorStates.choose_schedule_hours)

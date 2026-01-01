@@ -250,13 +250,20 @@ async def _show_master_profile_msg(message: Message, config: dict, master: dict)
 
     if master_services:
         all_services = config.get('services', [])
-        service_names = []
+        # Группируем по категориям
+        categories = {}
         for svc_id in master_services:
             svc = next((s for s in all_services if s.get('id') == svc_id), None)
             if svc:
-                service_names.append(svc.get('name', svc_id))
-        if service_names:
-            text += f"\n🏷 <b>Услуги:</b> {', '.join(service_names)}\n"
+                cat = svc.get('category', 'Другое')
+                if cat not in categories:
+                    categories[cat] = []
+                categories[cat].append(svc.get('name', svc_id))
+
+        if categories:
+            text += "\n📋 <b>Услуги:</b>\n"
+            for cat_name, svc_names in categories.items():
+                text += f"  📂 <i>{cat_name}:</i> {', '.join(svc_names)}\n"
 
     text += "\n━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -474,20 +481,23 @@ async def show_master_profile(callback: CallbackQuery, state: FSMContext, config
     if about:
         text += f"\n📝 <b>О мастере:</b>\n{about}\n"
 
-    # Получаем русские названия услуг из конфига
+    # Получаем услуги мастера с группировкой по категориям
     if master_services:
         all_services = config.get('services', [])
-        service_names = []
+        # Группируем по категориям
+        categories = {}
         for svc_id in master_services:
-            # Ищем услугу по ID
             svc = next((s for s in all_services if s.get('id') == svc_id), None)
             if svc:
-                service_names.append(svc.get('name', svc_id))
-            else:
-                # Если не нашли, показываем как есть (но не ID)
-                service_names.append(svc_id.replace('_', ' ').title())
-        if service_names:
-            text += f"\n🏷 <b>Услуги:</b> {', '.join(service_names)}\n"
+                cat = svc.get('category', 'Другое')
+                if cat not in categories:
+                    categories[cat] = []
+                categories[cat].append(svc.get('name', svc_id))
+
+        if categories:
+            text += "\n📋 <b>Услуги:</b>\n"
+            for cat_name, svc_names in categories.items():
+                text += f"  📂 <i>{cat_name}:</i> {', '.join(svc_names)}\n"
 
     text += "\n━━━━━━━━━━━━━━━━━━━━━━"
 
