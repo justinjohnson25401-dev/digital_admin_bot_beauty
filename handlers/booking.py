@@ -341,42 +341,29 @@ async def start_booking_with_master(message: Message, state: FSMContext, config:
         booking_with_preselected_master=True  # Флаг предвыбора мастера
     )
 
-    # Показываем услуги мастера
+    # Показываем услуги мастера - сразу переходим к выбору категории/услуги
     categories = get_categories_from_services(services)
 
     if len(categories) > 1:
-        # Формируем информацию о мастере с услугами по категориям
-        specialization = master.get('specialization') or master.get('role', '')
-
-        text = f"📅 <b>Запись к мастеру: {master_name}</b>\n"
-        if specialization:
-            text += f"💼 Специализация: {specialization}\n"
-        text += "\n📋 <b>Услуги:</b>\n"
-
+        # Сразу показываем категории без лишнего инфо-блока
         buttons = []
         for cat in categories:
-            # Фильтруем услуги по категории
             cat_services = [s for s in services if s.get('category', 'Другое') == cat]
             if cat_services:
-                # Показываем услуги категории в тексте
-                service_names = [s.get('name', '') for s in cat_services[:3]]
-                if len(cat_services) > 3:
-                    service_names.append(f"+{len(cat_services) - 3} ещё")
-                text += f"• <b>{cat}</b> — {', '.join(service_names)}\n"
-
                 buttons.append([InlineKeyboardButton(
                     text=f"📂 {cat}",
                     callback_data=f"cat:{cat}"
                 )])
 
-        text += "\nВыберите категорию:"
-        # Кнопка "Отменить" убрана - используется "◀️ Назад" в нижнем меню
-
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+        await message.answer(
+            f"📅 <b>Запись к мастеру: {master_name}</b>\n\nВыберите категорию:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
         await state.set_state(BookingState.choosing_category)
     else:
-        await message.answer(f"📅 Запись к мастеру: <b>{master_name}</b>", parse_mode="HTML")
+        # Одна категория - сразу к услугам
         await show_services_list_filtered(message, state, config, services)
 
 
@@ -1075,27 +1062,11 @@ async def show_confirmation(message: Message, state: FSMContext, config: dict):
     text += "\n━━━━━━━━━━━━━━━━━━━━━━\n"
     text += "Всё верно?"
 
+    # Упрощённый интерфейс: только 2 кнопки
     buttons = [
         [InlineKeyboardButton(text="✅ Подтвердить", callback_data="confirm_booking")],
-        [
-            InlineKeyboardButton(text="📝 Услуга", callback_data="edit_service"),
-            InlineKeyboardButton(text="📅 Дата", callback_data="edit_date")
-        ],
-        [
-            InlineKeyboardButton(text="🕐 Время", callback_data="edit_time"),
-            InlineKeyboardButton(text="👤 Имя", callback_data="edit_name")
-        ],
-        [
-            InlineKeyboardButton(text="📱 Телефон", callback_data="edit_phone"),
-            InlineKeyboardButton(text="💬 Коммент", callback_data="edit_comment")
-        ]
+        [InlineKeyboardButton(text="✏️ Редактировать", callback_data="edit_booking_menu")],
     ]
-
-    # Кнопка редактирования мастера если есть
-    if data.get('master_name'):
-        buttons.insert(2, [InlineKeyboardButton(text="👤 Мастер", callback_data="edit_master")])
-
-    buttons.append([InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking")])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
@@ -1268,6 +1239,31 @@ async def cancel_message(message: Message, state: FSMContext):
 
 
 # ==================== РЕДАКТИРОВАНИЕ ИЗ ПОДТВЕРЖДЕНИЯ ====================
+
+@router.callback_query(BookingState.confirmation, F.data == "edit_booking_menu")
+async def show_edit_menu(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Показать меню редактирования данных записи"""
+    data = await state.get_data()
+
+    buttons = [
+        [InlineKeyboardButton(text="📝 Услуга", callback_data="edit_service")],
+        [InlineKeyboardButton(text="📅 Дата", callback_data="edit_date")],
+        [InlineKeyboardButton(text="🕐 Время", callback_data="edit_time")],
+        [InlineKeyboardButton(text="👤 Имя", callback_data="edit_name")],
+        [InlineKeyboardButton(text="📱 Телефон", callback_data="edit_phone")],
+        [InlineKeyboardButton(text="💬 Комментарий", callback_data="edit_comment")],
+    ]
+
+    # Кнопка редактирования мастера если есть
+    if data.get('master_name'):
+        buttons.insert(1, [InlineKeyboardButton(text="👤 Мастер", callback_data="edit_master")])
+
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_confirmation")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text("✏️ <b>Что изменить?</b>", reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
 
 @router.callback_query(BookingState.confirmation, F.data == "edit_service")
 async def edit_service(callback: CallbackQuery, state: FSMContext, config: dict):

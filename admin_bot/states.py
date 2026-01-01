@@ -74,6 +74,7 @@ class StaffEditorStates(StatesGroup):
     choose_schedule_template = State()
     choose_schedule_days = State()  # Мультиселект дней недели
     choose_schedule_hours = State()  # Выбор времени работы
+    enter_custom_hours = State()  # Ручной ввод времени (ЧЧ:ММ-ЧЧ:ММ)
     confirm_add = State()
 
     # Ручная настройка графика

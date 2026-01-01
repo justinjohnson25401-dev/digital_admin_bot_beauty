@@ -280,11 +280,12 @@ async def cmd_start(message: Message, config: dict, db_manager):
     # Получаем статистику
     stats = db_manager.get_stats('today')
 
+    planned_text = f"\n├ Планируемая: {stats.get('planned_revenue', 0)}₽" if stats.get('planned_revenue', 0) > 0 else ""
     text = (
         f"🎯 <b>Админ-панель \"{business_name}\"</b>\n\n"
         f"📅 Сегодня:\n"
         f"├ Заказов: {stats['total_orders']}\n"
-        f"├ Выручка: {stats['total_revenue']}₽\n"
+        f"├ Выручка: {stats['total_revenue']}₽{planned_text}\n"
         f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
         "Используйте кнопки внизу для навигации."
     )
@@ -936,6 +937,78 @@ async def admin_clients_handler(callback, config: dict, db_manager):
 
 
 
+async def admin_services_all_handler(callback, config_manager):
+    """Показать все услуги"""
+    from admin_handlers.services_editor import get_services_keyboard
+    config = config_manager.get_config()
+    services = config.get('services', [])
+
+    text = f"📋 <b>ВСЕ УСЛУГИ</b> ({len(services)})\n\n"
+    keyboard = get_services_keyboard(services)
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+async def admin_services_by_category_handler(callback, config_manager):
+    """Показать услуги по категории"""
+    category = callback.data.replace("admin_services_cat:", "")
+    config = config_manager.get_config()
+    services = config.get('services', [])
+
+    # Фильтруем по категории
+    filtered = [s for s in services if s.get('category', 'Другое') == category]
+
+    text = f"📁 <b>{category}</b> ({len(filtered)} услуг)\n\n"
+
+    keyboard_rows = []
+    for svc in filtered:
+        dur = svc.get('duration', 0)
+        dur_text = f" • {dur}мин" if dur else ""
+        keyboard_rows.append([InlineKeyboardButton(
+            text=f"✏️ {svc['name']} — {svc['price']}₽{dur_text}",
+            callback_data=f"edit_service_{svc['id']}"
+        )])
+
+    keyboard_rows.append([InlineKeyboardButton(text="◀️ Все категории", callback_data="admin_services_menu")])
+    keyboard_rows.append([InlineKeyboardButton(text="➕ Добавить услугу", callback_data="add_service_start")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+async def admin_services_menu_handler(callback, config_manager):
+    """Меню фильтрации услуг"""
+    config = config_manager.get_config()
+    services = config.get('services', [])
+
+    # Группируем по категориям
+    categories = {}
+    for svc in services:
+        cat = svc.get('category', 'Другое')
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(svc)
+
+    text = f"📋 <b>УСЛУГИ</b> ({len(services)})\n\nВыберите категорию для просмотра:"
+
+    keyboard_rows = []
+    keyboard_rows.append([InlineKeyboardButton(text="📂 Все услуги", callback_data="admin_services_all")])
+
+    for cat_name in categories.keys():
+        count = len(categories[cat_name])
+        keyboard_rows.append([InlineKeyboardButton(
+            text=f"📁 {cat_name} ({count})",
+            callback_data=f"admin_services_cat:{cat_name}"
+        )])
+
+    keyboard_rows.append([InlineKeyboardButton(text="➕ Добавить услугу", callback_data="add_service_start")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
 async def admin_help_handler(callback):
     """Обработчик помощи"""
     text = (
@@ -965,11 +1038,12 @@ async def admin_main_handler(callback, config: dict, db_manager, state: FSMConte
     business_name = config.get('business_name', 'Ваш бизнес')
     stats = db_manager.get_stats('today')
 
+    planned_text = f"\n├ Планируемая: {stats.get('planned_revenue', 0)}₽" if stats.get('planned_revenue', 0) > 0 else ""
     text = (
         f"🎯 <b>Админ-панель \"{business_name}\"</b>\n\n"
         f"📅 Сегодня:\n"
         f"├ Заказов: {stats['total_orders']}\n"
-        f"├ Выручка: {stats['total_revenue']}₽\n"
+        f"├ Выручка: {stats['total_revenue']}₽{planned_text}\n"
         f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
         "Выберите действие:"
     )
@@ -1372,11 +1446,12 @@ async def main():
         business_name = config.get('business_name', 'Ваш бизнес')
         stats = db_manager.get_stats('today')
 
+        planned_text = f"\n├ Планируемая: {stats.get('planned_revenue', 0)}₽" if stats.get('planned_revenue', 0) > 0 else ""
         text = (
             f"🎯 <b>Админ-панель \"{business_name}\"</b>\n\n"
             f"📅 Сегодня:\n"
             f"├ Заказов: {stats['total_orders']}\n"
-            f"├ Выручка: {stats['total_revenue']}₽\n"
+            f"├ Выручка: {stats['total_revenue']}₽{planned_text}\n"
             f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
             "Используйте кнопки внизу для навигации."
         )
@@ -1390,7 +1465,7 @@ async def main():
         cursor = db_manager.connection.cursor()
         cursor.execute("""
             SELECT
-                u.telegram_id,
+                u.user_id,
                 u.username,
                 u.first_name,
                 u.last_name,
@@ -1398,8 +1473,8 @@ async def main():
                 COALESCE(SUM(o.price), 0) as total_spent,
                 MAX(o.phone) as last_phone
             FROM users u
-            LEFT JOIN orders o ON u.telegram_id = o.user_id AND o.status = 'active'
-            GROUP BY u.telegram_id
+            LEFT JOIN orders o ON u.user_id = o.user_id AND o.status = 'active'
+            GROUP BY u.user_id
             ORDER BY orders_count DESC
             LIMIT 20
         """)
@@ -1413,7 +1488,7 @@ async def main():
         if not clients:
             text += "<i>Клиентов пока нет</i>"
         else:
-            for telegram_id, username, first_name, last_name, orders_count, total_spent, last_phone in clients:
+            for user_id, username, first_name, last_name, orders_count, total_spent, last_phone in clients:
                 name = first_name or "—"
                 if last_name:
                     name += f" {last_name}"
@@ -1558,20 +1633,41 @@ async def main():
             text += "<i>Акций нет</i>\n"
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="➕ Добавить акцию", callback_data="add_promotion")],
+            [InlineKeyboardButton(text="➕ Добавить акцию", callback_data="promo_add")],
             [InlineKeyboardButton(text="📋 Управлять", callback_data="promotions_menu")],
         ])
         await message.answer(text, reply_markup=keyboard)
 
     async def reply_services_list_handler(message: Message, config_manager):
-        """Список услуг"""
-        from admin_handlers.services_editor import get_services_keyboard
+        """Список услуг с фильтрацией по категориям"""
         config = config_manager.get_config()
         services = config.get('services', [])
 
+        # Группируем по категориям
+        categories = {}
+        for svc in services:
+            cat = svc.get('category', 'Другое')
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append(svc)
+
         text = f"📋 <b>УСЛУГИ</b> ({len(services)})\n\n"
-        keyboard = get_services_keyboard(services)
-        await message.answer(text, reply_markup=keyboard)
+
+        # Показываем кнопки категорий для фильтрации
+        keyboard_rows = []
+        keyboard_rows.append([InlineKeyboardButton(text="📂 Все услуги", callback_data="admin_services_all")])
+
+        for cat_name in categories.keys():
+            count = len(categories[cat_name])
+            keyboard_rows.append([InlineKeyboardButton(
+                text=f"📁 {cat_name} ({count})",
+                callback_data=f"admin_services_cat:{cat_name}"
+            )])
+
+        keyboard_rows.append([InlineKeyboardButton(text="➕ Добавить услугу", callback_data="add_service_start")])
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+        await message.answer(text + "Выберите категорию для просмотра:", reply_markup=keyboard)
 
     async def reply_add_service_handler(message: Message, state: FSMContext):
         """Добавить услугу — переход к FSM"""
@@ -1619,19 +1715,67 @@ async def main():
 
     # --- Раздел НАСТРОЙКИ ---
     async def reply_help_handler(message: Message):
-        """Помощь"""
+        """Помощь - полезная FAQ для администраторов"""
         text = (
-            "❓ <b>ПОМОЩЬ</b>\n\n"
-            "<b>Навигация:</b>\n"
-            "• Нажимайте кнопки внизу экрана\n"
-            "• ◀️ Назад — возврат в главное меню\n\n"
-            "<b>Разделы:</b>\n"
-            "📅 Заказы — записи + статистика\n"
-            "💼 Услуги — услуги + акции\n"
-            "👤 Персонал — мастера + график\n"
-            "⚙️ Настройки — бизнес + тексты\n"
-            "👥 Клиенты — база клиентов\n\n"
-            "По вопросам: @Oroani"
+            "❓ <b>ПОМОЩЬ — ЧАСТЫЕ ВОПРОСЫ</b>\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "📋 <b>ЗАКАЗЫ И ЗАПИСИ</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "<b>Как посмотреть записи на сегодня?</b>\n"
+            "→ Заказы → Сегодня\n\n"
+
+            "<b>Как отменить запись клиента?</b>\n"
+            "→ Заказы → Сегодня/Завтра/Неделя → выберите запись → Отменить\n\n"
+
+            "<b>Что такое CSV и зачем он?</b>\n"
+            "→ CSV — это файл-таблица, который можно открыть в Excel/Google Таблицах.\n"
+            "→ Заказы → CSV — скачаете все записи за месяц для учёта и анализа.\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "👤 <b>ПЕРСОНАЛ</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "<b>Мастер в отпуске — что делать?</b>\n"
+            "→ Персонал → Закрытые даты → выберите мастера → добавьте даты отпуска.\n"
+            "→ Клиенты не смогут записаться на эти даты.\n\n"
+
+            "<b>Как изменить график мастера?</b>\n"
+            "→ Персонал → Редактировать → выберите мастера → Изменить график\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "💼 <b>УСЛУГИ И АКЦИИ</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "<b>Как добавить новую услугу?</b>\n"
+            "→ Услуги → Добавить → введите название, цену, длительность\n\n"
+
+            "<b>Как создать акцию/скидку?</b>\n"
+            "→ Услуги → Акции → Добавить акцию\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "⚙️ <b>НАСТРОЙКИ</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "<b>Как изменить часы работы?</b>\n"
+            "→ Настройки → Бизнес → Часы работы\n\n"
+
+            "<b>Как изменить приветственное сообщение?</b>\n"
+            "→ Настройки → Тексты → Приветствие\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🆘 <b>ПРОБЛЕМЫ</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "<b>Бот не отвечает</b>\n"
+            "→ Подождите 10-15 секунд и попробуйте снова\n"
+            "→ Нажмите /start для перезапуска\n\n"
+
+            "<b>Не могу найти запись</b>\n"
+            "→ Проверьте раздел «Неделя» — запись может быть на другую дату\n\n"
+
+            "<b>Техподдержка:</b> @Oroani"
         )
         await message.answer(text)
 
@@ -1729,6 +1873,11 @@ async def main():
     # admin_settings теперь обрабатывается в settings_editor.py
     dp.callback_query.register(admin_help_handler, F.data == "admin_help")
     dp.callback_query.register(admin_main_handler, F.data == "admin_main")
+
+    # Фильтрация услуг по категориям
+    dp.callback_query.register(admin_services_all_handler, F.data == "admin_services_all")
+    dp.callback_query.register(admin_services_by_category_handler, F.data.startswith("admin_services_cat:"))
+    dp.callback_query.register(admin_services_menu_handler, F.data == "admin_services_menu")
     
     logger.info(f"🚀 Admin Bot for '{config.get('business_name')}' started!")
 
