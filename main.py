@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.sqlite import SQLiteStorage
 from aiogram.types import TelegramObject, Message
 from typing import Any, Awaitable, Callable, Dict
 
@@ -144,7 +144,7 @@ async def main():
     else:
         logger.warning("⚠️ ADMIN_BOT_TOKEN не найден - уведомления будут через клиентского бота")
 
-    storage = MemoryStorage()
+    storage = SQLiteStorage(path=f"fsm_data_{business_slug}.db")
     dp = Dispatcher(storage=storage)
 
     dp.update.middleware(ConfigMiddleware(config, db_manager, admin_bot))
@@ -176,6 +176,7 @@ async def main():
     logger.info(f"🚀 Бот '{config.get('business_name', 'Неизвестно')}' запущен!")
     logger.info(f"📂 Конфигурация из директории: {args.config_dir}")
     logger.info(f"💾 База данных: db_{business_slug}.sqlite")
+    logger.info(f"💾 Хранилище FSM: fsm_data_{business_slug}.db")
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)
