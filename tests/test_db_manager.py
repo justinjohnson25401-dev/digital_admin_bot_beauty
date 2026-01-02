@@ -81,3 +81,115 @@ def test_get_upcoming_bookings(db):
     db.add_order(3, "s3", "S3", 300, "3", "3", None, "2099-12-31", "12:00")
     bookings = db.get_active_orders_for_reminders()
     assert len(bookings) == 2
+
+
+def test_race_condition_double_booking(db):
+    """
+    Тест на race condition: попытка забронировать уже занятый слот.
+    add_order должен выбросить ValueError при попытке дублирования.
+    """
+    # Первое бронирование успешно
+    order_id = db.add_order(
+        user_id=1,
+        service_id="s1",
+        service_name="Service1",
+        price=100,
+        client_name="Client1",
+        phone="+79991111111",
+        comment=None,
+        booking_date="2026-02-15",
+        booking_time="14:00"
+    )
+    assert order_id is not None
+
+    # Вторая попытка забронировать тот же слот должна провалиться
+    try:
+        db.add_order(
+            user_id=2,
+            service_id="s2",
+            service_name="Service2",
+            price=200,
+            client_name="Client2",
+            phone="+79992222222",
+            comment=None,
+            booking_date="2026-02-15",
+            booking_time="14:00"
+        )
+        assert False, "Должен был выброситься ValueError"
+    except ValueError as e:
+        assert "занят" in str(e).lower() or "already" in str(e).lower()
+
+
+def test_race_condition_same_master(db):
+    """
+    Тест на race condition для конкретного мастера.
+    """
+    # Первое бронирование для мастера master1
+    order_id = db.add_order(
+        user_id=1,
+        service_id="s1",
+        service_name="Service1",
+        price=100,
+        client_name="Client1",
+        phone="+79991111111",
+        comment=None,
+        booking_date="2026-02-20",
+        booking_time="10:00",
+        master_id="master1"
+    )
+    assert order_id is not None
+
+    # Попытка забронировать тот же слот у того же мастера
+    try:
+        db.add_order(
+            user_id=2,
+            service_id="s2",
+            service_name="Service2",
+            price=200,
+            client_name="Client2",
+            phone="+79992222222",
+            comment=None,
+            booking_date="2026-02-20",
+            booking_time="10:00",
+            master_id="master1"
+        )
+        assert False, "Должен был выброситься ValueError"
+    except ValueError:
+        pass  # Ожидаемое поведение
+
+
+def test_different_masters_same_slot(db):
+    """
+    Разные мастера могут иметь записи на одно время.
+    """
+    # Бронирование для master1
+    order1 = db.add_order(
+        user_id=1,
+        service_id="s1",
+        service_name="Service1",
+        price=100,
+        client_name="Client1",
+        phone="+79991111111",
+        comment=None,
+        booking_date="2026-02-25",
+        booking_time="12:00",
+        master_id="master1"
+    )
+
+    # Бронирование для master2 на то же время - должно пройти
+    order2 = db.add_order(
+        user_id=2,
+        service_id="s2",
+        service_name="Service2",
+        price=200,
+        client_name="Client2",
+        phone="+79992222222",
+        comment=None,
+        booking_date="2026-02-25",
+        booking_time="12:00",
+        master_id="master2"
+    )
+
+    assert order1 is not None
+    assert order2 is not None
+    assert order1 != order2

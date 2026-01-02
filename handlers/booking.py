@@ -576,5 +576,374 @@ async def cancel_process(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer("Главное меню:", reply_markup=get_main_keyboard())
     await callback.answer()
 
+# === HANDLERS FOR NAME INPUT ===
 
-# ... (the rest of the file remains the same)
+@router.callback_query(BookingState.input_name, F.data == "reuse_details")
+async def reuse_last_details(callback: CallbackQuery, state: FSMContext, db_manager):
+    """Использовать данные с прошлой записи"""
+    if not await _ensure_fsm_fresh(state, callback=callback):
+        return
+
+    last_details = db_manager.get_last_client_details(callback.from_user.id)
+    if last_details:
+        await state.update_data(
+            client_name=last_details['client_name'],
+            phone=last_details['phone']
+        )
+        logger.info(f"User {callback.from_user.id} reused previous details")
+        await callback.message.edit_text(
+            f"✅ Данные:\nИмя: {last_details['client_name']}\nТелефон: {last_details['phone']}"
+        )
+        await ask_for_comment(callback.message, state)
+    else:
+        await callback.message.answer("Как вас зовут?", reply_markup=get_cancel_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(BookingState.input_name, F.data == "enter_details")
+async def enter_details_manually(callback: CallbackQuery, state: FSMContext):
+    """Ввести данные вручную"""
+    if not await _ensure_fsm_fresh(state, callback=callback):
+        return
+    await callback.message.edit_text("Как вас зовут?")
+    await callback.message.answer("Введите ваше имя:", reply_markup=get_cancel_keyboard())
+    await callback.answer()
+
+
+@router.message(BookingState.input_name, F.text, ~F.text.in_({"❌ Отменить", "◀️ Назад"}))
+async def process_name(message: Message, state: FSMContext, config: dict):
+    """Обработка ввода имени"""
+    if not await _ensure_fsm_fresh(state, message=message):
+        return
+
+    name = message.text.strip()
+    if len(name) < 2:
+        await message.answer("Имя слишком короткое. Введите минимум 2 символа:")
+        return
+    if len(name) > 100:
+        await message.answer("Имя слишком длинное. Введите до 100 символов:")
+        return
+
+    await state.update_data(client_name=name)
+    logger.info(f"User {message.from_user.id} entered name in booking FSM")
+
+    # Проверяем, нужен ли телефон
+    require_phone = config.get('features', {}).get('require_phone', True)
+    if require_phone:
+        await message.answer(
+            "📱 Как вы хотите указать номер телефона?",
+            reply_markup=get_phone_input_keyboard()
+        )
+        await state.set_state(BookingState.choosing_phone_method)
+    else:
+        await state.update_data(phone="не указан")
+        await ask_for_comment(message, state)
+
+
+# === HANDLERS FOR PHONE INPUT ===
+
+@router.message(BookingState.choosing_phone_method, F.text == "✏️ Ввести вручную")
+async def choose_manual_phone(message: Message, state: FSMContext):
+    """Выбран ручной ввод телефона"""
+    await message.answer(
+        "📞 Введите ваш номер телефона:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(BookingState.input_phone)
+
+
+@router.message(BookingState.choosing_phone_method, F.contact)
+async def process_contact(message: Message, state: FSMContext):
+    """Обработка контакта"""
+    if not await _ensure_fsm_fresh(state, message=message):
+        return
+
+    phone = message.contact.phone_number
+    await state.update_data(phone=clean_phone(phone))
+    logger.info(f"User {message.from_user.id} shared contact in booking FSM")
+    await ask_for_comment(message, state)
+
+
+@router.message(BookingState.input_phone, F.text, ~F.text.in_({"❌ Отменить", "◀️ Назад"}))
+async def process_phone(message: Message, state: FSMContext):
+    """Обработка ввода телефона"""
+    if not await _ensure_fsm_fresh(state, message=message):
+        return
+
+    phone = clean_phone(message.text)
+    if not is_valid_phone(phone):
+        await message.answer(
+            "❌ Неверный формат номера телефона.\n"
+            "Введите номер в формате +7XXXXXXXXXX или 8XXXXXXXXXX:"
+        )
+        return
+
+    await state.update_data(phone=phone)
+    logger.info(f"User {message.from_user.id} entered phone in booking FSM")
+    await ask_for_comment(message, state)
+
+
+# === HANDLERS FOR COMMENT ===
+
+async def ask_for_comment(message: Message, state: FSMContext):
+    """Запрос комментария"""
+    await message.answer(
+        "💬 Хотите добавить комментарий к записи?",
+        reply_markup=get_comment_choice_keyboard()
+    )
+    await state.set_state(BookingState.waiting_comment_choice)
+
+
+@router.callback_query(BookingState.waiting_comment_choice, F.data == "add_comment")
+async def want_add_comment(callback: CallbackQuery, state: FSMContext):
+    """Пользователь хочет добавить комментарий"""
+    await callback.message.edit_text("💬 Введите ваш комментарий:")
+    await state.set_state(BookingState.input_comment)
+    await callback.answer()
+
+
+@router.callback_query(BookingState.waiting_comment_choice, F.data == "skip_comment")
+async def skip_comment(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
+    """Пропустить комментарий"""
+    await state.update_data(comment=None)
+    await callback.answer()
+    await show_confirmation(callback.message, state, config, edit=True)
+
+
+@router.message(BookingState.input_comment, F.text, ~F.text.in_({"❌ Отменить", "◀️ Назад"}))
+async def process_comment(message: Message, state: FSMContext, config: dict):
+    """Обработка ввода комментария"""
+    if not await _ensure_fsm_fresh(state, message=message):
+        return
+
+    comment = message.text.strip()
+    if len(comment) > 500:
+        await message.answer("Комментарий слишком длинный. Максимум 500 символов:")
+        return
+
+    await state.update_data(comment=comment)
+    logger.info(f"User {message.from_user.id} entered comment in booking FSM")
+    await show_confirmation(message, state, config)
+
+
+# === CONFIRMATION ===
+
+async def show_confirmation(message: Message, state: FSMContext, config: dict, edit: bool = False):
+    """Показ подтверждения бронирования"""
+    data = await state.get_data()
+
+    service_name = data.get('service_name', 'Услуга')
+    price = data.get('price', 0)
+    booking_date = data.get('booking_date', '')
+    booking_time = data.get('booking_time', '')
+    client_name = data.get('client_name', '')
+    phone = data.get('phone', '')
+    comment = data.get('comment', '')
+    master_name = data.get('master_name')
+
+    try:
+        date_formatted = datetime.fromisoformat(booking_date).strftime('%d.%m.%Y')
+    except Exception:
+        date_formatted = booking_date
+
+    text = (
+        f"📋 <b>Подтверждение записи</b>\n\n"
+        f"💇 Услуга: {service_name}\n"
+        f"💰 Цена: {price}₽\n"
+    )
+
+    if master_name:
+        text += f"👤 Мастер: {master_name}\n"
+
+    text += (
+        f"📅 Дата: {date_formatted}\n"
+        f"🕐 Время: {booking_time}\n"
+        f"👤 Имя: {client_name}\n"
+        f"📞 Телефон: {phone}\n"
+    )
+
+    if comment:
+        text += f"💬 Комментарий: {comment}\n"
+
+    text += "\n✅ Всё верно?"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data="confirm_booking"),
+            InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")
+        ],
+        [
+            InlineKeyboardButton(text="✏️ Изменить имя", callback_data="edit_name"),
+            InlineKeyboardButton(text="✏️ Изменить телефон", callback_data="edit_phone")
+        ]
+    ])
+
+    await state.set_state(BookingState.confirmation)
+
+    if edit:
+        await message.edit_text(text, reply_markup=keyboard)
+    else:
+        from handlers.start import get_main_keyboard
+        await message.answer(text, reply_markup=keyboard)
+        # Убираем клавиатуру отмены
+        await message.answer("⬇️", reply_markup=get_main_keyboard())
+
+
+@router.callback_query(BookingState.confirmation, F.data == "confirm_booking")
+async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
+    """Подтверждение и создание записи"""
+    if not await _ensure_fsm_fresh(state, callback=callback):
+        return
+
+    data = await state.get_data()
+
+    # Проверяем, не была ли запись уже создана
+    if data.get('booking_confirmed'):
+        await callback.answer("Запись уже создана", show_alert=True)
+        return
+
+    user_id = callback.from_user.id
+    service_id = data.get('service_id')
+    service_name = data.get('service_name')
+    price = data.get('price')
+    client_name = data.get('client_name')
+    phone = data.get('phone')
+    comment = data.get('comment')
+    booking_date = data.get('booking_date')
+    booking_time = data.get('booking_time')
+    master_id = data.get('master_id')
+
+    # Отмечаем, что идёт попытка создания
+    await state.update_data(booking_confirmed=True)
+
+    try:
+        # Атомарная проверка и создание записи (защита от race condition)
+        order_id = db_manager.add_order(
+            user_id=user_id,
+            service_id=service_id,
+            service_name=service_name,
+            price=price,
+            client_name=client_name,
+            phone=phone,
+            comment=comment,
+            booking_date=booking_date,
+            booking_time=booking_time,
+            master_id=master_id
+        )
+
+        # Добавляем пользователя в БД
+        db_manager.add_user(
+            user_id=user_id,
+            username=callback.from_user.username,
+            first_name=callback.from_user.first_name,
+            last_name=callback.from_user.last_name
+        )
+
+        logger.info(f"Booking confirmed: order_id={order_id}, user_id={user_id}")
+
+        # Формируем сообщение об успехе
+        try:
+            date_formatted = datetime.fromisoformat(booking_date).strftime('%d.%m.%Y')
+        except Exception:
+            date_formatted = booking_date
+
+        success_text = config.get('messages', {}).get('success',
+            "✅ Запись #{id} успешно создана!"
+        ).format(id=order_id)
+
+        master_text = f"\n👤 Мастер: {data.get('master_name')}" if data.get('master_name') else ""
+
+        await callback.message.edit_text(
+            f"{success_text}\n\n"
+            f"📅 {date_formatted} в {booking_time}\n"
+            f"💇 {service_name} — {price}₽{master_text}\n\n"
+            f"Ждём вас! 💫"
+        )
+
+        # Уведомляем админов
+        try:
+            await send_order_to_admins(
+                config=config,
+                order_id=order_id,
+                user=callback.from_user,
+                service_name=service_name,
+                price=price,
+                booking_date=booking_date,
+                booking_time=booking_time,
+                client_name=client_name,
+                phone=phone,
+                comment=comment,
+                master_name=data.get('master_name'),
+                db_manager=db_manager
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify admins: {e}")
+
+        # Очищаем состояние
+        await state.clear()
+        await callback.answer("✅ Запись создана!")
+
+    except ValueError as e:
+        # Слот уже занят (race condition обработан)
+        logger.warning(f"Slot already taken for user {user_id}: {e}")
+        await state.update_data(booking_confirmed=False)
+        await callback.answer(
+            "❌ К сожалению, это время уже занято. Выберите другое время.",
+            show_alert=True
+        )
+        # Возвращаем к выбору времени
+        keyboard = generate_time_slots_keyboard(
+            config, db_manager, booking_date, master_id=master_id
+        )
+        await callback.message.edit_text(
+            f"📅 {booking_date}\n\n⚠️ Выбранное время занято. Выберите другое:",
+            reply_markup=keyboard
+        )
+        await state.set_state(BookingState.choosing_time)
+
+    except Exception as e:
+        logger.error(f"Error creating booking for user {user_id}: {e}")
+        await state.update_data(booking_confirmed=False)
+        await callback.answer("❌ Ошибка при создании записи", show_alert=True)
+
+
+# === EDIT HANDLERS DURING CONFIRMATION ===
+
+@router.callback_query(BookingState.confirmation, F.data == "edit_name")
+async def edit_name_in_confirmation(callback: CallbackQuery, state: FSMContext):
+    """Редактирование имени из подтверждения"""
+    await callback.message.edit_text("✏️ Введите новое имя:")
+    await state.set_state(BookingState.edit_name)
+    await callback.answer()
+
+
+@router.callback_query(BookingState.confirmation, F.data == "edit_phone")
+async def edit_phone_in_confirmation(callback: CallbackQuery, state: FSMContext):
+    """Редактирование телефона из подтверждения"""
+    await callback.message.edit_text("✏️ Введите новый номер телефона:")
+    await state.set_state(BookingState.edit_phone)
+    await callback.answer()
+
+
+@router.message(BookingState.edit_name, F.text, ~F.text.in_({"❌ Отменить", "◀️ Назад"}))
+async def process_edit_name(message: Message, state: FSMContext, config: dict):
+    """Обработка редактирования имени"""
+    name = message.text.strip()
+    if len(name) < 2:
+        await message.answer("Имя слишком короткое. Введите минимум 2 символа:")
+        return
+
+    await state.update_data(client_name=name)
+    await show_confirmation(message, state, config)
+
+
+@router.message(BookingState.edit_phone, F.text, ~F.text.in_({"❌ Отменить", "◀️ Назад"}))
+async def process_edit_phone(message: Message, state: FSMContext, config: dict):
+    """Обработка редактирования телефона"""
+    phone = clean_phone(message.text)
+    if not is_valid_phone(phone):
+        await message.answer("❌ Неверный формат. Введите номер в формате +7XXXXXXXXXX:")
+        return
+
+    await state.update_data(phone=phone)
+    await show_confirmation(message, state, config)
