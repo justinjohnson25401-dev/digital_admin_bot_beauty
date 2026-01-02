@@ -26,33 +26,39 @@ class BookingQueries:
         """Добавление заказа с защитой от race condition"""
         try:
             self._ensure_connection()
-            cursor = self.connection.cursor()
-            created_at = datetime.now().isoformat()
+            # Используем `with self.connection` для атомарной транзакции
+            with self.connection:
+                cursor = self.connection.cursor()
+                created_at = datetime.now().isoformat()
 
-            # Защита от race condition: проверяем доступность слота в транзакции
-            if booking_date and booking_time:
-                if master_id:
-                    cursor.execute("""
-                        SELECT COUNT(*) FROM orders
-                        WHERE booking_date = ? AND booking_time = ? AND master_id = ? AND status = 'active'
-                    """, (booking_date, booking_time, master_id))
-                else:
-                    cursor.execute("""
-                        SELECT COUNT(*) FROM orders
-                        WHERE booking_date = ? AND booking_time = ? AND status = 'active'
-                    """, (booking_date, booking_time))
-                if cursor.fetchone()[0] > 0:
-                    raise ValueError(f"Слот {booking_date} {booking_time} уже занят")
+                # Шаг 1: Проверяем доступность слота
+                if booking_date and booking_time:
+                    if master_id:
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM orders
+                            WHERE booking_date = ? AND booking_time = ? AND master_id = ? AND status = 'active'
+                        """, (booking_date, booking_time, master_id))
+                    else:
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM orders
+                            WHERE booking_date = ? AND booking_time = ? AND status = 'active'
+                        """, (booking_date, booking_time))
+                    
+                    if cursor.fetchone()[0] > 0:
+                        raise ValueError(f"Слот {booking_date} {booking_time} уже занят")
 
-            cursor.execute("""
-                INSERT INTO orders (user_id, service_id, service_name, price, client_name, phone,
-                                   comment, booking_date, booking_time, master_id, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
-            """, (user_id, service_id, service_name, price, client_name, phone,
-                  comment, booking_date, booking_time, master_id, created_at))
+                # Шаг 2: Создаем заказ (если слот свободен)
+                cursor.execute("""
+                    INSERT INTO orders (user_id, service_id, service_name, price, client_name, phone,
+                                       comment, booking_date, booking_time, master_id, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+                """, (user_id, service_id, service_name, price, client_name, phone,
+                      comment, booking_date, booking_time, master_id, created_at))
 
-            self.connection.commit()
-            order_id = cursor.lastrowid
+                order_id = cursor.lastrowid
+
+            # Контекстный менеджер `with` автоматически сохраняет изменения (commit)
+            # или откатывает их (rollback) в случае ошибки.
 
             log_msg = safe_log_order_creation(
                 user_id=user_id,
@@ -68,9 +74,11 @@ class BookingQueries:
             return order_id
 
         except ValueError as e:
+            # Ошибка (слот занят) будет обработана, транзакция автоматически отменена
             logger.warning(f"Slot already taken: {e}")
             raise
         except sqlite3.Error as e:
+            # Ошибка БД, транзакция автоматически отменена
             logger.error(f"Error adding order: {e}")
             raise
 
