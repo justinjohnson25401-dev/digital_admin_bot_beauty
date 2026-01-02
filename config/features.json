@@ -1,0 +1,9 @@
+
+{
+  "features": {
+    "enable_slot_booking": true,
+    "enable_admin_notify": true,
+    "require_phone": true,
+    "ask_comment": true
+  }
+}

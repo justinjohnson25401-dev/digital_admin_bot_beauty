@@ -1,0 +1,61 @@
+
+{
+  "services": [
+    {
+      "id": "hair_women_cut",
+      "name": "Женская стрижка",
+      "price": 1500,
+      "duration": 60,
+      "category": "Волосы"
+    },
+    {
+      "id": "hair_men_cut",
+      "name": "Мужская стрижка",
+      "price": 900,
+      "duration": 40,
+      "category": "Волосы"
+    },
+    {
+      "id": "hair_coloring",
+      "name": "Окрашивание волос",
+      "price": 3500,
+      "duration": 120,
+      "category": "Волосы"
+    },
+    {
+      "id": "nails_manicure",
+      "name": "Маникюр с покрытием",
+      "price": 2200,
+      "duration": 90,
+      "category": "Ногти"
+    },
+    {
+      "id": "nails_pedicure",
+      "name": "Педикюр классический",
+      "price": 2500,
+      "duration": 90,
+      "category": "Ногти"
+    },
+    {
+      "id": "brows_correction",
+      "name": "Коррекция бровей",
+      "price": 800,
+      "duration": 30,
+      "category": "Брови и ресницы"
+    },
+    {
+      "id": "brows_lamination",
+      "name": "Ламинирование бровей",
+      "price": 2000,
+      "duration": 60,
+      "category": "Брови и ресницы"
+    },
+    {
+      "id": "face_cleaning",
+      "name": "Чистка лица",
+      "price": 3000,
+      "duration": 75,
+      "category": "Косметология"
+    }
+  ]
+}

@@ -3,7 +3,6 @@ import argparse
 import asyncio
 import logging
 import os
-import json
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.client.default import DefaultBotProperties
@@ -16,78 +15,58 @@ from typing import Any, Awaitable, Callable, Dict
 load_dotenv()
 
 # Импорты из проекта
-from utils.db_manager import DBManager
-from logger import setup_logger  # Импортируем настройку логгера
+from utils.db import DBManager
+from logger import setup_logger
+from utils.config_loader import load_config # MODIFIED
 
 # Импортируем handlers
 from handlers import start
 from handlers.booking import booking_router
 from handlers import mybookings
 
-def load_config(config_path: str) -> dict:
-    """Загрузка конфигурации из JSON"""
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        logging.error(f"Файл конфигурации не найден: {config_path}")
-        raise
-    except json.JSONDecodeError as e:
-        logging.error(f"Ошибка парсинга JSON: {e}")
-        raise
-
 
 async def watch_config_updates(config_path: str, config: dict, poll_interval_seconds: float = 3.0):
     """
-    Отслеживает изменения в конфигурационном файле.
-    ОПТИМИЗИРОВАНО: файл читается только если изменился mtime или версия.
+    Отслеживает изменения в директории с конфигурационными файлами.
+    ОПТИМИЗИРОВАНО: файлы читаются только если изменился mtime или версия.
     """
     last_mtime = None
-    last_version = None
+    last_version = config.get('config_version', 0)
 
-    try:
-        last_mtime = os.path.getmtime(config_path)
-    except Exception:
-        last_mtime = None
+    def get_latest_mtime(path: str):
+        try:
+            files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.json')]
+            if not files:
+                return None
+            return max(os.path.getmtime(f) for f in files)
+        except Exception:
+            return None
 
-    try:
-        last_version = int(config.get('config_version') or 0)
-    except Exception:
-        last_version = 0
+    last_mtime = get_latest_mtime(config_path)
 
     while True:
         await asyncio.sleep(poll_interval_seconds)
 
-        # Проверяем изменился ли файл
-        try:
-            current_mtime = os.path.getmtime(config_path)
-        except Exception:
-            # Если не можем получить mtime, пропускаем итерацию
+        current_mtime = get_latest_mtime(config_path)
+        if current_mtime is None:
             continue
 
-        # Оптимизация: если mtime не изменился, не читаем файл
         if last_mtime is not None and current_mtime == last_mtime:
             continue
 
-        # Файл изменился, загружаем новую конфигурацию
         try:
             new_config = load_config(config_path)
         except Exception as e:
             logging.error(f"❌ Не удалось перезагрузить конфигурацию: {e}")
-            continue
-
-        try:
-            new_version = int(new_config.get('config_version') or 0)
-        except Exception:
-            new_version = 0
-
-        # Проверяем, изменилась ли версия
-        if new_version == last_version and last_mtime is not None:
-            # Версия не изменилась, обновляем только mtime
             last_mtime = current_mtime
             continue
 
-        # Применяем новую конфигурацию
+        new_version = new_config.get('config_version', 0)
+
+        if new_version == last_version:
+            last_mtime = current_mtime
+            continue
+
         config.clear()
         config.update(new_config)
 
@@ -113,37 +92,32 @@ class ConfigMiddleware(BaseMiddleware):
         data['config'] = self.config
         data['messages'] = self.config.get('messages', {})
         data['db_manager'] = self.db_manager
-        data['admin_bot'] = self.admin_bot  # Для уведомлений админам
+        data['admin_bot'] = self.admin_bot
         return await handler(event, data)
 
 
 async def main():
-    # Настраиваем логгер в самом начале
     setup_logger()
     logger = logging.getLogger(__name__)
 
-    # Парсинг аргументов командной строки
     parser = argparse.ArgumentParser(description='Telegram Business Bot V2.0')
-    parser.add_argument('--config', type=str, required=True,
-                        help='Путь к JSON конфигурации (например, configs/client_lite.json)')
+    parser.add_argument('--config-dir', type=str, default='config',
+                        help='Путь к директории с JSON файлами конфигурации.')
     args = parser.parse_args()
 
-    # Загрузка конфигурации
     try:
-        config = load_config(args.config)
+        config = load_config(args.config_dir)
         logger.info(f"✅ Конфигурация загружена: {config.get('business_name', 'Неизвестно')}")
     except Exception as e:
-        logger.critical(f"❌ Не удалось загрузить конфигурацию: {e}", exc_info=True)
+        logger.critical(f"❌ Не удалось загрузить конфигурацию из '{args.config_dir}': {e}", exc_info=True)
         return
 
-    # Получаем токен из переменных окружения
     bot_token = os.getenv('BOT_TOKEN') or config.get('bot_token')
     
     if not bot_token:
         logger.critical("❌ BOT_TOKEN не найден ни в .env, ни в конфиге!")
         return
 
-    # Инициализация базы данных
     business_slug = config.get('business_slug', 'default_business')
     db_manager = DBManager(business_slug)
     
@@ -154,13 +128,11 @@ async def main():
         logger.critical(f"❌ Ошибка инициализации БД: {e}", exc_info=True)
         return
 
-    # Создаём клиентского бота
     bot = Bot(
         token=bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
 
-    # Создаём админ-бота для уведомлений
     admin_bot = None
     admin_token = os.getenv('ADMIN_BOT_TOKEN')
     if admin_token:
@@ -177,14 +149,12 @@ async def main():
 
     dp.update.middleware(ConfigMiddleware(config, db_manager, admin_bot))
 
-    watcher_task = asyncio.create_task(watch_config_updates(args.config, config))
+    watcher_task = asyncio.create_task(watch_config_updates(args.config_dir, config))
 
-    # Подключаем роутеры
     dp.include_router(start.router)
     dp.include_router(mybookings.router)
     dp.include_router(booking_router)
     
-    # Fallback для неизвестных сообщений
     from aiogram.filters import StateFilter
     from aiogram import F
 
@@ -204,7 +174,7 @@ async def main():
         )
 
     logger.info(f"🚀 Бот '{config.get('business_name', 'Неизвестно')}' запущен!")
-    logger.info(f"📂 Конфигурация: {args.config}")
+    logger.info(f"📂 Конфигурация из директории: {args.config_dir}")
     logger.info(f"💾 База данных: db_{business_slug}.sqlite")
 
     try:

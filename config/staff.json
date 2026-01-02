@@ -1,0 +1,42 @@
+
+{
+  "staff": {
+    "enabled": false,
+    "masters": [
+      {
+        "id": "master_1",
+        "name": "Анна",
+        "role": "Парикмахер",
+        "photo_url": null,
+        "services": ["hair_women_cut", "hair_coloring"],
+        "schedule": {
+          "monday": {"working": true, "start": "09:00", "end": "18:00"},
+          "tuesday": {"working": true, "start": "09:00", "end": "18:00"},
+          "wednesday": {"working": true, "start": "09:00", "end": "18:00"},
+          "thursday": {"working": true, "start": "09:00", "end": "18:00"},
+          "friday": {"working": true, "start": "09:00", "end": "18:00"},
+          "saturday": {"working": false},
+          "sunday": {"working": false}
+        },
+        "closed_dates": []
+      },
+      {
+        "id": "master_2",
+        "name": "Мария",
+        "role": "Мастер маникюра",
+        "photo_url": null,
+        "services": ["nails_manicure", "nails_pedicure"],
+        "schedule": {
+          "monday": {"working": false},
+          "tuesday": {"working": true, "start": "10:00", "end": "20:00"},
+          "wednesday": {"working": true, "start": "10:00", "end": "20:00"},
+          "thursday": {"working": true, "start": "10:00", "end": "20:00"},
+          "friday": {"working": true, "start": "10:00", "end": "20:00"},
+          "saturday": {"working": true, "start": "10:00", "end": "18:00"},
+          "sunday": {"working": false}
+        },
+        "closed_dates": []
+      }
+    ]
+  }
+}
