@@ -28,7 +28,8 @@ def _get_master_name(config: dict, master_id: str) -> str:
 
 def _format_bookings_list(bookings: list, config: dict = None) -> tuple[str, InlineKeyboardMarkup]:
     """Форматирование списка записей и клавиатуры с отображением мастера"""
-    text = "📋 <b>Ваши записи:</b>\n\n"
+    text = "📋 <b>ВАШИ ЗАПИСИ</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━\n\n"
 
     for i, booking in enumerate(bookings, 1):
         booking_date = booking['booking_date']
@@ -47,32 +48,35 @@ def _format_bookings_list(bookings: list, config: dict = None) -> tuple[str, Inl
 
         time_formatted = format_time(booking_time) if booking_time else 'не указано'
 
-        text += f"<b>{i}. {booking['service_name']}</b>\n"
-
-        # Показываем мастера если staff.enabled и есть master_id
+        # Получаем имя мастера
+        master_name = None
         if master_id and config:
             master_name = _get_master_name(config, master_id)
-            if master_name:
-                text += f"   👤 Мастер: {master_name}\n"
 
+        # Красивая карточка записи
+        text += f"┌ <b>{booking['service_name']}</b>\n"
+        text += f"│\n"
+        text += f"│ 📅  <b>{date_formatted}</b> в <b>{time_formatted}</b>\n"
+        if master_name:
+            text += f"│ 👤  Мастер: {master_name}\n"
         if client_name:
-            text += f"   Имя: {client_name}\n"
-        text += (
-            f"   📅 Дата: {date_formatted}\n"
-            f"   🕐 Время: {time_formatted}\n"
-            f"   💰 Цена: {booking['price']}₽\n"
-            f"   ID: #{booking['id']}\n\n"
-        )
+            text += f"│ 👋  Имя: {client_name}\n"
+        text += f"│ 💰  {booking['price']}₽\n"
+        text += f"│\n"
+        text += f"└ <i>Запись #{booking['id']}</i>\n\n"
 
+    # Кнопки с понятными текстами
     buttons = []
     for booking in bookings:
         buttons.append([
             InlineKeyboardButton(
-                text=f"✏️ #{booking['id']}",
+                text=f"✏️ Изменить запись #{booking['id']}",
                 callback_data=f"edit_booking:{booking['id']}"
-            ),
+            )
+        ])
+        buttons.append([
             InlineKeyboardButton(
-                text=f"🗑 #{booking['id']}",
+                text=f"🗑 Отменить запись #{booking['id']}",
                 callback_data=f"cancel_order:{booking['id']}"
             )
         ])

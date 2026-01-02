@@ -867,7 +867,9 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: di
         user_bookings = db_manager.get_user_bookings(user_id, active_only=True)
 
         if user_bookings:
-            profile_text = "📋 <b>Ваши активные записи:</b>\n\n"
+            profile_text = "📋 <b>ВАШИ ЗАПИСИ</b>\n"
+            profile_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+
             for i, booking in enumerate(user_bookings, 1):
                 b_date = booking['booking_date']
                 b_time = booking['booking_time']
@@ -878,28 +880,35 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: di
 
                 # Получаем имя мастера если есть
                 b_master_id = booking.get('master_id')
-                b_master_text = ""
+                b_master_name = None
                 if b_master_id and config.get('staff', {}).get('enabled'):
                     for m in config.get('staff', {}).get('masters', []):
                         if m.get('id') == b_master_id:
-                            b_master_text = f"   👤 {m.get('name')}\n"
+                            b_master_name = m.get('name')
                             break
 
-                profile_text += f"{i}. <b>{booking['service_name']}</b>\n"
-                profile_text += f"   📅 {b_date_fmt} в {b_time}\n"
-                profile_text += b_master_text
-                profile_text += f"   💰 {booking['price']}₽\n\n"
+                # Красивая карточка записи
+                profile_text += f"┌ <b>{booking['service_name']}</b>\n"
+                profile_text += f"│\n"
+                profile_text += f"│ 📅  <b>{b_date_fmt}</b> в <b>{b_time}</b>\n"
+                if b_master_name:
+                    profile_text += f"│ 👤  Мастер: {b_master_name}\n"
+                profile_text += f"│ 💰  {booking['price']}₽\n"
+                profile_text += f"│\n"
+                profile_text += f"└ <i>Запись #{booking['id']}</i>\n\n"
 
-            # Inline кнопки для редактирования
+            # Inline кнопки для редактирования - понятные тексты
             inline_buttons = []
             for booking in user_bookings:
                 inline_buttons.append([
                     InlineKeyboardButton(
-                        text=f"✏️ Изменить #{booking['id']}",
+                        text=f"✏️ Изменить запись #{booking['id']}",
                         callback_data=f"edit_booking:{booking['id']}"
-                    ),
+                    )
+                ])
+                inline_buttons.append([
                     InlineKeyboardButton(
-                        text=f"🗑 Отменить #{booking['id']}",
+                        text=f"🗑 Отменить запись #{booking['id']}",
                         callback_data=f"cancel_order:{booking['id']}"
                     )
                 ])
