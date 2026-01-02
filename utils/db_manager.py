@@ -395,6 +395,64 @@ class DBManager:
             logger.error(f"Error checking slot availability for master: {e}")
             return False
 
+    def check_slot_availability_excluding(
+        self,
+        booking_date: str,
+        booking_time: str,
+        exclude_order_id: int
+    ) -> bool:
+        """
+        Проверяет, свободен ли слот (дата + время) для бронирования,
+        исключая из проверки существующий заказ exclude_order_id (при редактировании).
+
+        Учитывает мастера: если редактируемый заказ привязан к мастеру,
+        проверяет доступность только для этого мастера.
+
+        Args:
+            booking_date: дата в формате YYYY-MM-DD
+            booking_time: время в формате HH:MM
+            exclude_order_id: ID редактируемого заказа (игнорируется при проверке)
+
+        Returns:
+            True — слот свободен (или занят только редактируемым заказом)
+            False — слот занят другим заказом
+        """
+        try:
+            self._ensure_connection()
+
+            # Получаем информацию о редактируемом заказе для определения мастера
+            order = self.get_order_by_id(exclude_order_id)
+            master_id = order.get('master_id') if order else None
+
+            cursor = self.connection.cursor()
+
+            if master_id:
+                # Если заказ привязан к мастеру, проверяем только для этого мастера
+                cursor.execute("""
+                    SELECT COUNT(*) FROM orders
+                    WHERE booking_date = ?
+                      AND booking_time = ?
+                      AND master_id = ?
+                      AND status = 'active'
+                      AND id != ?
+                """, (booking_date, booking_time, master_id, exclude_order_id))
+            else:
+                # Если мастер не указан, проверяем общую доступность
+                cursor.execute("""
+                    SELECT COUNT(*) FROM orders
+                    WHERE booking_date = ?
+                      AND booking_time = ?
+                      AND status = 'active'
+                      AND id != ?
+                """, (booking_date, booking_time, exclude_order_id))
+
+            count = cursor.fetchone()[0]
+            return count == 0
+
+        except sqlite3.Error as e:
+            logger.error(f"Error checking slot availability excluding order {exclude_order_id}: {e}")
+            return False
+
     # ИЗМЕНЕНО: Добавлена поддержка параметра active_only и master_id
     def get_user_bookings(self, user_id: int, active_only: bool = True) -> list:
         """Получение списка записей пользователя"""
