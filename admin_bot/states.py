@@ -6,6 +6,17 @@ FSM состояния для админ-панели.
 from aiogram.fsm.state import State, StatesGroup
 
 
+class AdminPinStates(StatesGroup):
+    """Состояния для PIN-авторизации"""
+    waiting_pin = State()
+
+
+class AdminOrdersStates(StatesGroup):
+    """Состояния для выбора диапазона дат заказов"""
+    input_date_from = State()
+    input_date_to = State()
+
+
 class BusinessSettingsStates(StatesGroup):
     """Состояния для редактирования настроек бизнеса"""
     edit_name = State()
