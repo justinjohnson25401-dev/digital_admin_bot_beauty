@@ -173,3 +173,108 @@ def validate_price(price) -> Tuple[bool, Optional[str]]:
         return False, "Цена слишком высокая (максимум 1 000 000)"
 
     return True, None
+
+
+# Паттерны для обнаружения опасного HTML/JS контента
+_DANGEROUS_PATTERNS = [
+    re.compile(r'<\s*script', re.IGNORECASE),
+    re.compile(r'javascript\s*:', re.IGNORECASE),
+    re.compile(r'on\w+\s*=', re.IGNORECASE),  # onerror=, onclick=, etc.
+    re.compile(r'<\s*iframe', re.IGNORECASE),
+    re.compile(r'<\s*object', re.IGNORECASE),
+    re.compile(r'<\s*embed', re.IGNORECASE),
+    re.compile(r'<\s*form', re.IGNORECASE),
+    re.compile(r'<\s*input', re.IGNORECASE),
+    re.compile(r'data\s*:', re.IGNORECASE),
+    re.compile(r'vbscript\s*:', re.IGNORECASE),
+]
+
+
+def _contains_dangerous_content(text: str) -> bool:
+    """Проверяет, содержит ли текст опасный HTML/JS контент."""
+    for pattern in _DANGEROUS_PATTERNS:
+        if pattern.search(text):
+            return True
+    return False
+
+
+def validate_message_text(text: str) -> Tuple[bool, Optional[str]]:
+    """
+    Валидирует текст сообщения для бота.
+
+    Args:
+        text: Текст сообщения
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    if not text:
+        return False, "Текст сообщения не может быть пустым"
+
+    text = text.strip()
+
+    if len(text) < 3:
+        return False, "Текст слишком короткий (минимум 3 символа)"
+
+    if len(text) > 2000:
+        return False, "Текст слишком длинный (максимум 2000 символов)"
+
+    if _contains_dangerous_content(text):
+        return False, "Текст содержит запрещённый HTML/JavaScript код"
+
+    return True, None
+
+
+def validate_faq_button(text: str) -> Tuple[bool, Optional[str]]:
+    """
+    Валидирует текст кнопки FAQ.
+
+    Args:
+        text: Текст кнопки
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    if not text:
+        return False, "Текст кнопки не может быть пустым"
+
+    text = text.strip()
+
+    if len(text) < 1:
+        return False, "Текст кнопки слишком короткий (минимум 1 символ)"
+
+    if len(text) > 64:
+        return False, "Текст кнопки слишком длинный (максимум 64 символа)"
+
+    if '\n' in text or '\r' in text:
+        return False, "Текст кнопки не должен содержать переносы строк"
+
+    return True, None
+
+
+def validate_faq_answer(text: str) -> Tuple[bool, Optional[str]]:
+    """
+    Валидирует текст ответа FAQ.
+
+    Args:
+        text: Текст ответа
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    if not text:
+        return False, "Текст ответа не может быть пустым"
+
+    text = text.strip()
+
+    if len(text) < 3:
+        return False, "Текст ответа слишком короткий (минимум 3 символа)"
+
+    if len(text) > 2000:
+        return False, "Текст ответа слишком длинный (максимум 2000 символов)"
+
+    # Проверяем только на <script> и опасные атрибуты, многострочный текст разрешён
+    if _contains_dangerous_content(text):
+        return False, "Текст ответа содержит запрещённый HTML/JavaScript код"
+
+    return True, None

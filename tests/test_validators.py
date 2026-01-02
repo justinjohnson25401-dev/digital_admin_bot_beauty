@@ -220,3 +220,155 @@ class TestPriceValidation:
         is_valid, error = validate_price("abc")
         assert is_valid == False
         assert "целым числом" in error
+
+
+class TestMessageTextValidation:
+    """Тесты валидации текста сообщений"""
+
+    def test_valid_message_text(self):
+        """Корректный текст сообщения"""
+        from utils.validators import validate_message_text
+        is_valid, error = validate_message_text("Добро пожаловать в наш салон!")
+        assert is_valid == True
+        assert error is None
+
+    def test_message_text_too_short(self):
+        """Слишком короткий текст"""
+        from utils.validators import validate_message_text
+        is_valid, error = validate_message_text("Hi")
+        assert is_valid == False
+        assert "короткий" in error
+
+    def test_message_text_too_long(self):
+        """Слишком длинный текст"""
+        from utils.validators import validate_message_text
+        is_valid, error = validate_message_text("A" * 2500)
+        assert is_valid == False
+        assert "длинный" in error
+
+    def test_message_text_empty(self):
+        """Пустой текст"""
+        from utils.validators import validate_message_text
+        is_valid, error = validate_message_text("")
+        assert is_valid == False
+
+    def test_message_text_with_script(self):
+        """Текст с тегом script"""
+        from utils.validators import validate_message_text
+        is_valid, error = validate_message_text("Hello <script>alert('xss')</script>")
+        assert is_valid == False
+        assert "запрещённый" in error
+
+    def test_message_text_with_onerror(self):
+        """Текст с атрибутом onerror"""
+        from utils.validators import validate_message_text
+        is_valid, error = validate_message_text('<img onerror="alert(1)" src="x">')
+        assert is_valid == False
+        assert "запрещённый" in error
+
+    def test_message_text_with_javascript(self):
+        """Текст с javascript:"""
+        from utils.validators import validate_message_text
+        is_valid, error = validate_message_text('<a href="javascript:alert(1)">Click</a>')
+        assert is_valid == False
+        assert "запрещённый" in error
+
+    def test_message_text_with_safe_html(self):
+        """Текст с безопасным HTML (bold, italic)"""
+        from utils.validators import validate_message_text
+        is_valid, error = validate_message_text("<b>Важно!</b> Текст с <i>форматированием</i>")
+        assert is_valid == True
+
+
+class TestFaqButtonValidation:
+    """Тесты валидации кнопки FAQ"""
+
+    def test_valid_faq_button(self):
+        """Корректная кнопка FAQ"""
+        from utils.validators import validate_faq_button
+        is_valid, error = validate_faq_button("Цены")
+        assert is_valid == True
+        assert error is None
+
+    def test_faq_button_with_emoji(self):
+        """Кнопка с эмодзи"""
+        from utils.validators import validate_faq_button
+        is_valid, error = validate_faq_button("💰 Цены")
+        assert is_valid == True
+
+    def test_faq_button_empty(self):
+        """Пустая кнопка"""
+        from utils.validators import validate_faq_button
+        is_valid, error = validate_faq_button("")
+        assert is_valid == False
+
+    def test_faq_button_too_long(self):
+        """Слишком длинная кнопка"""
+        from utils.validators import validate_faq_button
+        is_valid, error = validate_faq_button("A" * 70)
+        assert is_valid == False
+        assert "длинный" in error
+
+    def test_faq_button_with_newline(self):
+        """Кнопка с переносом строки"""
+        from utils.validators import validate_faq_button
+        is_valid, error = validate_faq_button("Цены\nи услуги")
+        assert is_valid == False
+        assert "переносы" in error
+
+    def test_faq_button_max_length(self):
+        """Кнопка максимальной длины (64 символа)"""
+        from utils.validators import validate_faq_button
+        is_valid, error = validate_faq_button("A" * 64)
+        assert is_valid == True
+
+
+class TestFaqAnswerValidation:
+    """Тесты валидации ответа FAQ"""
+
+    def test_valid_faq_answer(self):
+        """Корректный ответ FAQ"""
+        from utils.validators import validate_faq_answer
+        is_valid, error = validate_faq_answer("Наши цены: стрижка - 1000р, окрашивание - 3000р")
+        assert is_valid == True
+        assert error is None
+
+    def test_faq_answer_multiline(self):
+        """Многострочный ответ FAQ"""
+        from utils.validators import validate_faq_answer
+        is_valid, error = validate_faq_answer("Часы работы:\nПн-Пт: 10:00-20:00\nСб: 10:00-18:00\nВс: выходной")
+        assert is_valid == True
+
+    def test_faq_answer_too_short(self):
+        """Слишком короткий ответ"""
+        from utils.validators import validate_faq_answer
+        is_valid, error = validate_faq_answer("Да")
+        assert is_valid == False
+        assert "короткий" in error
+
+    def test_faq_answer_too_long(self):
+        """Слишком длинный ответ"""
+        from utils.validators import validate_faq_answer
+        is_valid, error = validate_faq_answer("A" * 2500)
+        assert is_valid == False
+        assert "длинный" in error
+
+    def test_faq_answer_with_script(self):
+        """Ответ с тегом script"""
+        from utils.validators import validate_faq_answer
+        is_valid, error = validate_faq_answer("Ответ <script>evil()</script> текст")
+        assert is_valid == False
+        assert "запрещённый" in error
+
+    def test_faq_answer_with_iframe(self):
+        """Ответ с тегом iframe"""
+        from utils.validators import validate_faq_answer
+        is_valid, error = validate_faq_answer('Текст <iframe src="evil.com"></iframe>')
+        assert is_valid == False
+        assert "запрещённый" in error
+
+    def test_faq_answer_empty(self):
+        """Пустой ответ"""
+        from utils.validators import validate_faq_answer
+        is_valid, error = validate_faq_answer("")
+        assert is_valid == False
