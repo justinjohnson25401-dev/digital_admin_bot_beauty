@@ -51,6 +51,7 @@ async def show_texts_menu(callback: CallbackQuery, config: dict):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💬 Сообщения бота", callback_data="texts_messages")],
         [InlineKeyboardButton(text="❓ FAQ (Частые вопросы)", callback_data="texts_faq")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_settings")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
