@@ -309,10 +309,10 @@ async def edit_datetime_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(EditBookingState.choosing_date)
     await callback.answer()
 
-@router.callback_query(EditBookingState.choosing_date, F.data.startswith("date:"))
-async def edit_datetime_date_selected(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
-    """Обработка выбора новой даты"""
-    booking_date = callback.data.split(":")[1]
+@router.callback_query(EditBookingState.choosing_date, F.data.startswith("quick_date:"))
+async def edit_datetime_quick_date_selected(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
+    """Обработка быстрого выбора даты (сегодня/завтра)"""
+    booking_date = callback.data.split(":", 1)[1]
     await state.update_data(new_booking_date=booking_date)
 
     data = await state.get_data()
@@ -333,6 +333,130 @@ async def edit_datetime_date_selected(callback: CallbackQuery, state: FSMContext
 
     await state.set_state(EditBookingState.choosing_time)
     await callback.answer()
+
+
+@router.callback_query(EditBookingState.choosing_date, F.data.startswith("cal_date:"))
+async def edit_datetime_calendar_date_selected(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
+    """Обработка выбора даты из календаря при редактировании"""
+    booking_date = callback.data.split(":", 1)[1]
+    await state.update_data(new_booking_date=booking_date)
+
+    data = await state.get_data()
+    order_id = data.get('editing_order_id')
+
+    keyboard = generate_time_slots_keyboard(config, db_manager, booking_date, exclude_order_id=order_id)
+
+    date_obj = datetime.fromisoformat(booking_date)
+    date_formatted = date_obj.strftime('%d.%m.%Y')
+
+    await callback.message.edit_text(
+        f"Дата: {date_formatted}\n\n"
+        "Выберите новое время:",
+        reply_markup=keyboard
+    )
+
+    await state.set_state(EditBookingState.choosing_time)
+    await callback.answer()
+
+
+@router.callback_query(EditBookingState.choosing_date, F.data == "open_calendar")
+async def edit_open_calendar(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Открыть календарь при редактировании записи"""
+    from utils.calendar import generate_calendar_keyboard
+
+    now = datetime.now()
+    await state.update_data(
+        calendar_year=now.year,
+        calendar_month=now.month
+    )
+
+    keyboard = generate_calendar_keyboard(
+        year=now.year,
+        month=now.month,
+        config=config,
+        mode="booking"
+    )
+
+    await callback.message.edit_text(
+        "📅 Выберите новую дату в календаре:",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@router.callback_query(EditBookingState.choosing_date, F.data == "cal_prev_month")
+async def edit_calendar_prev_month(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Переход к предыдущему месяцу при редактировании"""
+    from utils.calendar import generate_calendar_keyboard
+
+    data = await state.get_data()
+    year = data.get('calendar_year', datetime.now().year)
+    month = data.get('calendar_month', datetime.now().month)
+
+    month -= 1
+    if month < 1:
+        month = 12
+        year -= 1
+
+    await state.update_data(calendar_year=year, calendar_month=month)
+
+    keyboard = generate_calendar_keyboard(
+        year=year,
+        month=month,
+        config=config,
+        mode="booking"
+    )
+
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(EditBookingState.choosing_date, F.data == "cal_next_month")
+async def edit_calendar_next_month(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Переход к следующему месяцу при редактировании"""
+    from utils.calendar import generate_calendar_keyboard
+
+    data = await state.get_data()
+    year = data.get('calendar_year', datetime.now().year)
+    month = data.get('calendar_month', datetime.now().month)
+
+    month += 1
+    if month > 12:
+        month = 1
+        year += 1
+
+    await state.update_data(calendar_year=year, calendar_month=month)
+
+    keyboard = generate_calendar_keyboard(
+        year=year,
+        month=month,
+        config=config,
+        mode="booking"
+    )
+
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(EditBookingState.choosing_date, F.data == "date_closed")
+async def edit_date_closed_handler(callback: CallbackQuery):
+    """Нажатие на закрытую дату при редактировании"""
+    await callback.answer("❌ Эта дата недоступна", show_alert=True)
+
+
+@router.callback_query(EditBookingState.choosing_date, F.data == "cancel_calendar")
+async def edit_cancel_calendar(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Отмена выбора из календаря при редактировании"""
+    keyboard = generate_dates_keyboard(config=config)
+    await callback.message.edit_text("Выберите новую дату:", reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(EditBookingState.choosing_time, F.data == "slot_taken")
+async def edit_slot_taken_handler(callback: CallbackQuery):
+    """Нажатие на занятый слот при редактировании"""
+    await callback.answer("Это время уже занято", show_alert=True)
+
 
 @router.callback_query(EditBookingState.choosing_time, F.data.startswith("time:"))
 async def edit_datetime_time_selected(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
