@@ -545,9 +545,8 @@ async def time_selected(callback: CallbackQuery, state: FSMContext, config: dict
         await callback.answer("Это время уже прошло", show_alert=True)
         return
 
-    if not db_manager.check_slot_availability(data.get('booking_date'), booking_time, master_id=data.get('master_id')):
-        await callback.answer("Это время занято. Выберите другое.", show_alert=True)
-        return
+    # Убрана дублирующая проверка слота - она выполняется внутри add_order() в транзакции
+    # для защиты от race condition
 
     await state.update_data(booking_time=booking_time)
     await callback.message.edit_text(f"📅 {datetime.fromisoformat(data.get('booking_date')).strftime('%d.%m.%Y')} в {booking_time}")
