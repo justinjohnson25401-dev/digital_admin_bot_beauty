@@ -1,29 +1,20 @@
 import pytest
-import tempfile
+import sqlite3
 import os
 from utils.db_manager import DBManager
 
 @pytest.fixture
-def db():
-    """Создаём временную БД для тестов"""
-    # Используем системную temp-директорию с уникальным именем
-    temp_dir = tempfile.gettempdir()
-    temp_path = os.path.join(temp_dir, f"test_db_{os.getpid()}.db")
+def db(tmp_path):
+    """Создаём временную БД для тестов используя pytest tmp_path"""
+    # tmp_path - встроенная фикстура pytest, гарантированно работает на всех ОС
+    db_file = tmp_path / "test.db"
     
-    # Удаляем файл, если он существует
-    if os.path.exists(temp_path):
-        os.unlink(temp_path)
-    
-    db = DBManager(temp_path)
+    db = DBManager(str(db_file))
     db.init_db()
     
     yield db
     
     db.close()
-    
-    # Удаляем тестовую БД после теста
-    if os.path.exists(temp_path):
-        os.unlink(temp_path)
 
 def test_create_order(db):
     """Создание заказа работает"""
