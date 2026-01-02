@@ -278,3 +278,92 @@ def validate_faq_answer(text: str) -> Tuple[bool, Optional[str]]:
         return False, "Текст ответа содержит запрещённый HTML/JavaScript код"
 
     return True, None
+
+
+# Паттерн для валидации имени мастера (буквы, пробелы, дефис)
+_MASTER_NAME_PATTERN = re.compile(r'^[\w\s\-]+$', re.UNICODE)
+
+
+def validate_master_name(name: str) -> Tuple[bool, Optional[str]]:
+    """
+    Валидирует имя мастера.
+
+    Args:
+        name: Имя мастера
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    if not name:
+        return False, "Имя мастера не может быть пустым"
+
+    name = name.strip()
+
+    if len(name) < 2:
+        return False, "Имя слишком короткое (минимум 2 символа)"
+
+    if len(name) > 50:
+        return False, "Имя слишком длинное (максимум 50 символов)"
+
+    # Проверяем на допустимые символы (буквы, пробелы, дефис)
+    if not _MASTER_NAME_PATTERN.match(name):
+        return False, "Имя содержит недопустимые символы (разрешены буквы, пробелы и дефис)"
+
+    return True, None
+
+
+def validate_master_role(role: str) -> Tuple[bool, Optional[str]]:
+    """
+    Валидирует роль/специализацию мастера.
+
+    Args:
+        role: Роль мастера (может быть пустой)
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    # Пустая роль допустима
+    if not role:
+        return True, None
+
+    role = role.strip()
+
+    # После strip пустая строка тоже валидна
+    if len(role) == 0:
+        return True, None
+
+    if len(role) < 2:
+        return False, "Роль слишком короткая (минимум 2 символа)"
+
+    if len(role) > 50:
+        return False, "Роль слишком длинная (максимум 50 символов)"
+
+    # Проверяем на опасный контент
+    if _contains_dangerous_content(role):
+        return False, "Роль содержит запрещённый HTML/JavaScript код"
+
+    return True, None
+
+
+def validate_date_format(date_str: str) -> Tuple[bool, Optional[str]]:
+    """
+    Валидирует формат даты (YYYY-MM-DD).
+
+    Args:
+        date_str: Строка с датой
+
+    Returns:
+        Tuple[bool, Optional[str]]: (is_valid, error_message)
+    """
+    if not date_str:
+        return False, "Дата не может быть пустой"
+
+    date_str = date_str.strip()
+
+    from datetime import datetime
+
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+        return True, None
+    except ValueError:
+        return False, "Неверный формат даты (ожидается YYYY-MM-DD)"

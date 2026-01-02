@@ -372,3 +372,168 @@ class TestFaqAnswerValidation:
         from utils.validators import validate_faq_answer
         is_valid, error = validate_faq_answer("")
         assert is_valid == False
+
+
+class TestMasterNameValidation:
+    """Тесты валидации имени мастера"""
+
+    def test_valid_master_name_simple(self):
+        """Простое имя"""
+        from utils.validators import validate_master_name
+        is_valid, error = validate_master_name("Анна")
+        assert is_valid == True
+        assert error is None
+
+    def test_valid_master_name_with_surname(self):
+        """Имя с фамилией"""
+        from utils.validators import validate_master_name
+        is_valid, error = validate_master_name("Анна Петрова")
+        assert is_valid == True
+
+    def test_valid_master_name_with_hyphen(self):
+        """Имя с дефисом"""
+        from utils.validators import validate_master_name
+        is_valid, error = validate_master_name("Ольга-стилист")
+        assert is_valid == True
+
+    def test_master_name_too_short(self):
+        """Слишком короткое имя"""
+        from utils.validators import validate_master_name
+        is_valid, error = validate_master_name("А")
+        assert is_valid == False
+        assert "короткое" in error
+
+    def test_master_name_too_long(self):
+        """Слишком длинное имя"""
+        from utils.validators import validate_master_name
+        is_valid, error = validate_master_name("А" * 60)
+        assert is_valid == False
+        assert "длинное" in error
+
+    def test_master_name_empty(self):
+        """Пустое имя"""
+        from utils.validators import validate_master_name
+        is_valid, error = validate_master_name("")
+        assert is_valid == False
+
+    def test_master_name_with_invalid_chars(self):
+        """Имя с недопустимыми символами"""
+        from utils.validators import validate_master_name
+        is_valid, error = validate_master_name("Анна<script>")
+        assert is_valid == False
+        assert "недопустимые" in error
+
+    def test_master_name_with_numbers(self):
+        """Имя с цифрами (допустимо по паттерну \\w)"""
+        from utils.validators import validate_master_name
+        is_valid, error = validate_master_name("Мастер1")
+        assert is_valid == True
+
+
+class TestMasterRoleValidation:
+    """Тесты валидации роли мастера"""
+
+    def test_valid_master_role(self):
+        """Корректная роль"""
+        from utils.validators import validate_master_role
+        is_valid, error = validate_master_role("Стилист")
+        assert is_valid == True
+        assert error is None
+
+    def test_master_role_empty(self):
+        """Пустая роль (допустимо)"""
+        from utils.validators import validate_master_role
+        is_valid, error = validate_master_role("")
+        assert is_valid == True
+
+    def test_master_role_none(self):
+        """None роль (допустимо)"""
+        from utils.validators import validate_master_role
+        is_valid, error = validate_master_role(None)
+        assert is_valid == True
+
+    def test_master_role_whitespace(self):
+        """Роль из пробелов (допустимо после strip)"""
+        from utils.validators import validate_master_role
+        is_valid, error = validate_master_role("   ")
+        assert is_valid == True
+
+    def test_master_role_too_long(self):
+        """Слишком длинная роль"""
+        from utils.validators import validate_master_role
+        is_valid, error = validate_master_role("А" * 60)
+        assert is_valid == False
+        assert "длинная" in error
+
+    def test_master_role_with_script(self):
+        """Роль с тегом script"""
+        from utils.validators import validate_master_role
+        is_valid, error = validate_master_role("Стилист<script>")
+        assert is_valid == False
+        assert "запрещённый" in error
+
+    def test_master_role_normal(self):
+        """Обычная роль со спецсимволами"""
+        from utils.validators import validate_master_role
+        is_valid, error = validate_master_role("Топ-стилист / колорист")
+        assert is_valid == True
+
+
+class TestDateFormatValidation:
+    """Тесты валидации формата даты"""
+
+    def test_valid_date_format(self):
+        """Корректный формат даты"""
+        from utils.validators import validate_date_format
+        is_valid, error = validate_date_format("2026-01-15")
+        assert is_valid == True
+        assert error is None
+
+    def test_valid_date_past(self):
+        """Дата в прошлом (формат валиден)"""
+        from utils.validators import validate_date_format
+        is_valid, error = validate_date_format("2020-12-31")
+        assert is_valid == True
+
+    def test_valid_date_future(self):
+        """Дата в будущем"""
+        from utils.validators import validate_date_format
+        is_valid, error = validate_date_format("2030-06-15")
+        assert is_valid == True
+
+    def test_invalid_date_format_dots(self):
+        """Неверный формат с точками"""
+        from utils.validators import validate_date_format
+        is_valid, error = validate_date_format("15.01.2026")
+        assert is_valid == False
+        assert "YYYY-MM-DD" in error
+
+    def test_invalid_date_format_slashes(self):
+        """Неверный формат со слэшами"""
+        from utils.validators import validate_date_format
+        is_valid, error = validate_date_format("2026/01/15")
+        assert is_valid == False
+
+    def test_invalid_month(self):
+        """Несуществующий месяц"""
+        from utils.validators import validate_date_format
+        is_valid, error = validate_date_format("2026-13-01")
+        assert is_valid == False
+
+    def test_invalid_day(self):
+        """Несуществующий день"""
+        from utils.validators import validate_date_format
+        is_valid, error = validate_date_format("2026-02-30")
+        assert is_valid == False
+
+    def test_invalid_date_text(self):
+        """Текст вместо даты"""
+        from utils.validators import validate_date_format
+        is_valid, error = validate_date_format("abc")
+        assert is_valid == False
+
+    def test_date_empty(self):
+        """Пустая дата"""
+        from utils.validators import validate_date_format
+        is_valid, error = validate_date_format("")
+        assert is_valid == False
