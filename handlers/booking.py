@@ -849,7 +849,7 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: di
 
         success_text = config.get('messages', {}).get('success',
             "✅ Запись #{id} успешно создана!"
-        ).format(id=order_id)
+        ).format(id=order_id, date=date_formatted, time=booking_time)
 
         master_text = f"\n👤 Мастер: {data.get('master_name')}" if data.get('master_name') else ""
 
@@ -859,6 +859,65 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: di
             f"💇 {service_name} — {price}₽{master_text}\n\n"
             f"Ждём вас! 💫"
         )
+
+        # Показываем профиль с записями и главную клавиатуру
+        from handlers.start import get_main_keyboard
+
+        # Получаем все записи пользователя
+        user_bookings = db_manager.get_user_bookings(user_id, active_only=True)
+
+        if user_bookings:
+            profile_text = "📋 <b>ВАШИ ЗАПИСИ</b>\n"
+            profile_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            for i, booking in enumerate(user_bookings, 1):
+                b_date = booking['booking_date']
+                b_time = booking['booking_time']
+                try:
+                    b_date_fmt = datetime.fromisoformat(b_date).strftime('%d.%m.%Y')
+                except:
+                    b_date_fmt = b_date
+
+                # Получаем имя мастера если есть
+                b_master_id = booking.get('master_id')
+                b_master_name = None
+                if b_master_id and config.get('staff', {}).get('enabled'):
+                    for m in config.get('staff', {}).get('masters', []):
+                        if m.get('id') == b_master_id:
+                            b_master_name = m.get('name')
+                            break
+
+                # Красивая карточка записи
+                profile_text += f"┌ <b>{booking['service_name']}</b>\n"
+                profile_text += f"│\n"
+                profile_text += f"│ 📅  <b>{b_date_fmt}</b> в <b>{b_time}</b>\n"
+                if b_master_name:
+                    profile_text += f"│ 👤  Мастер: {b_master_name}\n"
+                profile_text += f"│ 💰  {booking['price']}₽\n"
+                profile_text += f"│\n"
+                profile_text += f"└ <i>Запись #{booking['id']}</i>\n\n"
+
+            # Inline кнопки для редактирования - понятные тексты
+            inline_buttons = []
+            for booking in user_bookings:
+                inline_buttons.append([
+                    InlineKeyboardButton(
+                        text=f"✏️ Изменить запись #{booking['id']}",
+                        callback_data=f"edit_booking:{booking['id']}"
+                    )
+                ])
+                inline_buttons.append([
+                    InlineKeyboardButton(
+                        text=f"🗑 Отменить запись #{booking['id']}",
+                        callback_data=f"cancel_order:{booking['id']}"
+                    )
+                ])
+
+            edit_keyboard = InlineKeyboardMarkup(inline_keyboard=inline_buttons)
+            await callback.message.answer(profile_text, reply_markup=edit_keyboard)
+
+        # Показываем главную клавиатуру
+        await callback.message.answer("🏠 Главное меню", reply_markup=get_main_keyboard())
 
         # Уведомляем админов
         try:
