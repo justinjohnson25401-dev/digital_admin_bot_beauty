@@ -99,6 +99,7 @@ class AdminOrdersStates(StatesGroup):
     """Состояния для выбора диапазона дат заказов"""
     input_date_from = State()
     input_date_to = State()
+    input_stats_date = State()  # Ввод даты для статистики
 
 
 class AdminPinMiddleware(BaseMiddleware):
@@ -206,7 +207,7 @@ def get_orders_reply_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="📊 Статистика")],
             [KeyboardButton(text="📅 Сегодня"), KeyboardButton(text="📅 Завтра")],
-            [KeyboardButton(text="📅 Неделя"), KeyboardButton(text="📥 CSV")],
+            [KeyboardButton(text="📅 Неделя")],
         ],
         resize_keyboard=True
     )
@@ -217,7 +218,7 @@ def get_services_reply_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="🎁 Акции")],
-            [KeyboardButton(text="📋 Список услуг"), KeyboardButton(text="➕ Добавить")],
+            [KeyboardButton(text="📋 Список услуг"), KeyboardButton(text="➕ Добавить услугу")],
         ],
         resize_keyboard=True
     )
@@ -935,6 +936,185 @@ async def admin_clients_handler(callback, config: dict, db_manager):
     await callback.answer()
 
 
+async def stats_period_handler(callback: CallbackQuery, db_manager):
+    """Показать статистику за выбранный период"""
+    from datetime import datetime, timedelta
+
+    period = callback.data.replace("stats_period:", "")
+
+    period_names = {
+        'today': 'Сегодня',
+        'tomorrow': 'Завтра',
+        'week': 'Неделя',
+        'month': 'Месяц'
+    }
+
+    if period == 'tomorrow':
+        # Для "завтра" показываем запланированные заказы
+        cursor = db_manager.connection.cursor()
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        cursor.execute("""
+            SELECT COUNT(*), COALESCE(SUM(price), 0) FROM orders
+            WHERE status = 'active' AND booking_date = ?
+        """, (tomorrow,))
+        row = cursor.fetchone()
+        orders_count, revenue = row[0], row[1]
+
+        text = (
+            f"📊 <b>СТАТИСТИКА: Завтра</b>\n\n"
+            f"📅 Запланировано на {(datetime.now() + timedelta(days=1)).strftime('%d.%m.%Y')}:\n"
+            f"├ Заказов: {orders_count}\n"
+            f"└ Ожидаемая выручка: {revenue}₽\n"
+        )
+    else:
+        stats = db_manager.get_stats(period)
+        period_name = period_names.get(period, period)
+
+        planned_text = f"\n├ Планируемая: {stats.get('planned_revenue', 0)}₽" if stats.get('planned_revenue', 0) > 0 else ""
+        text = (
+            f"📊 <b>СТАТИСТИКА: {period_name}</b>\n\n"
+            f"├ Заказов: {stats['total_orders']}\n"
+            f"├ Выручка: {stats['total_revenue']}₽{planned_text}\n"
+            f"└ Новых клиентов: {stats.get('new_clients', 0)}\n\n"
+        )
+
+        if stats.get('top_services'):
+            text += "🏆 Топ услуги:\n"
+            for i, (service, count) in enumerate(stats['top_services'][:5], 1):
+                text += f"{i}. {service} ({count} шт.)\n"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📅 Сегодня", callback_data="stats_period:today"),
+            InlineKeyboardButton(text="📅 Завтра", callback_data="stats_period:tomorrow"),
+        ],
+        [
+            InlineKeyboardButton(text="📅 Неделя", callback_data="stats_period:week"),
+            InlineKeyboardButton(text="📅 Месяц", callback_data="stats_period:month"),
+        ],
+        [InlineKeyboardButton(text="📆 Ввести дату", callback_data="stats_custom_date")],
+        [InlineKeyboardButton(text="📥 Скачать CSV", callback_data="admin_export_csv")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+async def stats_custom_date_handler(callback: CallbackQuery, state: FSMContext):
+    """Начать ввод произвольной даты для статистики"""
+    text = (
+        "📆 <b>ВВОД ДАТЫ</b>\n\n"
+        "Введите дату или диапазон дат в формате:\n\n"
+        "• <code>01.01.2026</code> — конкретная дата\n"
+        "• <code>01.01.2026-07.01.2026</code> — диапазон\n"
+    )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="stats_back")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(AdminOrdersStates.input_stats_date)
+    await callback.answer()
+
+
+async def process_stats_date(message: Message, state: FSMContext, db_manager):
+    """Обработка введённой даты для статистики"""
+    import re
+    from datetime import datetime
+
+    text = message.text.strip()
+
+    # Проверяем формат даты или диапазона
+    single_date = re.match(r'^(\d{2})\.(\d{2})\.(\d{4})$', text)
+    date_range = re.match(r'^(\d{2})\.(\d{2})\.(\d{4})-(\d{2})\.(\d{2})\.(\d{4})$', text)
+
+    try:
+        if single_date:
+            day, month, year = single_date.groups()
+            date_from = datetime(int(year), int(month), int(day))
+            date_to = date_from
+
+            cursor = db_manager.connection.cursor()
+            cursor.execute("""
+                SELECT COUNT(*), COALESCE(SUM(price), 0) FROM orders
+                WHERE status = 'active' AND booking_date = ?
+            """, (date_from.strftime('%Y-%m-%d'),))
+            row = cursor.fetchone()
+            orders_count, revenue = row[0], row[1]
+
+            result_text = (
+                f"📊 <b>СТАТИСТИКА за {date_from.strftime('%d.%m.%Y')}</b>\n\n"
+                f"├ Заказов: {orders_count}\n"
+                f"└ Выручка: {revenue}₽\n"
+            )
+
+        elif date_range:
+            d1, m1, y1, d2, m2, y2 = date_range.groups()
+            date_from = datetime(int(y1), int(m1), int(d1))
+            date_to = datetime(int(y2), int(m2), int(d2))
+
+            cursor = db_manager.connection.cursor()
+            cursor.execute("""
+                SELECT COUNT(*), COALESCE(SUM(price), 0) FROM orders
+                WHERE status = 'active' AND booking_date BETWEEN ? AND ?
+            """, (date_from.strftime('%Y-%m-%d'), date_to.strftime('%Y-%m-%d')))
+            row = cursor.fetchone()
+            orders_count, revenue = row[0], row[1]
+
+            result_text = (
+                f"📊 <b>СТАТИСТИКА за {date_from.strftime('%d.%m.%Y')} - {date_to.strftime('%d.%m.%Y')}</b>\n\n"
+                f"├ Заказов: {orders_count}\n"
+                f"└ Выручка: {revenue}₽\n"
+            )
+        else:
+            await message.answer("❌ Неверный формат. Используйте:\n• 01.01.2026\n• 01.01.2026-07.01.2026")
+            return
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📊 К статистике", callback_data="stats_back")],
+        ])
+
+        await message.answer(result_text, reply_markup=keyboard)
+        await state.clear()
+
+    except ValueError:
+        await message.answer("❌ Некорректная дата. Проверьте формат.")
+
+
+async def stats_back_handler(callback: CallbackQuery, state: FSMContext, db_manager):
+    """Вернуться к главному экрану статистики"""
+    from datetime import datetime
+
+    await state.clear()
+    stats_today = db_manager.get_stats('today')
+
+    planned_text = f"\n├ Планируемая: {stats_today.get('planned_revenue', 0)}₽" if stats_today.get('planned_revenue', 0) > 0 else ""
+    text = (
+        f"📊 <b>СТАТИСТИКА</b>\n\n"
+        f"📅 <b>Сегодня</b> ({datetime.now().strftime('%d.%m.%Y')}):\n"
+        f"├ Заказов: {stats_today['total_orders']}\n"
+        f"├ Выручка: {stats_today['total_revenue']}₽{planned_text}\n"
+        f"└ Новых клиентов: {stats_today.get('new_clients', 0)}\n\n"
+        f"Выберите период для детальной статистики:"
+    )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📅 Сегодня", callback_data="stats_period:today"),
+            InlineKeyboardButton(text="📅 Завтра", callback_data="stats_period:tomorrow"),
+        ],
+        [
+            InlineKeyboardButton(text="📅 Неделя", callback_data="stats_period:week"),
+            InlineKeyboardButton(text="📅 Месяц", callback_data="stats_period:month"),
+        ],
+        [InlineKeyboardButton(text="📆 Ввести дату", callback_data="stats_custom_date")],
+        [InlineKeyboardButton(text="📥 Скачать CSV", callback_data="admin_export_csv")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
 
 
 async def admin_services_all_handler(callback, config_manager):
@@ -1506,29 +1686,35 @@ async def main():
 
     # --- Раздел ЗАКАЗЫ ---
     async def reply_stats_handler(message: Message, state: FSMContext, config: dict, db_manager):
-        """Подробная статистика"""
+        """Статистика с выбором периода"""
         from datetime import datetime
         stats_today = db_manager.get_stats('today')
-        stats_week = db_manager.get_stats('week')
-        stats_month = db_manager.get_stats('month')
 
+        # Показываем статистику за сегодня по умолчанию
+        planned_text = f"\n├ Планируемая: {stats_today.get('planned_revenue', 0)}₽" if stats_today.get('planned_revenue', 0) > 0 else ""
         text = (
             f"📊 <b>СТАТИСТИКА</b>\n\n"
-            f"📅 Сегодня ({datetime.now().strftime('%d.%m.%Y')}):\n"
+            f"📅 <b>Сегодня</b> ({datetime.now().strftime('%d.%m.%Y')}):\n"
             f"├ Заказов: {stats_today['total_orders']}\n"
-            f"└ Выручка: {stats_today['total_revenue']}₽\n\n"
-            f"📅 Эта неделя:\n"
-            f"├ Заказов: {stats_week['total_orders']}\n"
-            f"└ Выручка: {stats_week['total_revenue']}₽\n\n"
-            f"📅 Этот месяц:\n"
-            f"├ Заказов: {stats_month['total_orders']}\n"
-            f"└ Выручка: {stats_month['total_revenue']}₽\n\n"
-            f"🏆 Топ услуги (месяц):\n"
+            f"├ Выручка: {stats_today['total_revenue']}₽{planned_text}\n"
+            f"└ Новых клиентов: {stats_today.get('new_clients', 0)}\n\n"
+            f"Выберите период для детальной статистики:"
         )
-        for i, (service, count) in enumerate(stats_month['top_services'][:5], 1):
-            text += f"{i}. {service} ({count} шт.)\n"
 
-        await message.answer(text)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📅 Сегодня", callback_data="stats_period:today"),
+                InlineKeyboardButton(text="📅 Завтра", callback_data="stats_period:tomorrow"),
+            ],
+            [
+                InlineKeyboardButton(text="📅 Неделя", callback_data="stats_period:week"),
+                InlineKeyboardButton(text="📅 Месяц", callback_data="stats_period:month"),
+            ],
+            [InlineKeyboardButton(text="📆 Ввести дату", callback_data="stats_custom_date")],
+            [InlineKeyboardButton(text="📥 Скачать CSV", callback_data="admin_export_csv")],
+        ])
+
+        await message.answer(text, reply_markup=keyboard)
 
     async def reply_orders_today_handler(message: Message, db_manager, config: dict):
         """Заказы на сегодня"""
@@ -1779,12 +1965,36 @@ async def main():
         )
         await message.answer(text)
 
-    async def reply_business_settings_handler(message: Message):
-        """Настройки бизнеса"""
+    async def reply_business_settings_handler(message: Message, config_manager):
+        """Настройки бизнеса - прямой переход к настройкам без промежуточного блока"""
+        config = config_manager.get_config()
+
+        business_name = config.get('business_name', 'Не указано')
+        work_start = config.get('booking', {}).get('work_start', 10)
+        work_end = config.get('booking', {}).get('work_end', 20)
+        services_count = len(config.get('services', []))
+        timezone_city = config.get('timezone_city', 'Авто (localtime)')
+        timezone_offset = config.get('timezone_offset_hours')
+        tz_text = timezone_city
+        if timezone_offset is not None:
+            tz_text = f"{timezone_city} (UTC{timezone_offset:+d})"
+
+        text = (
+            f"⚙️ <b>Настройки</b>\n\n"
+            f"📝 Название: {business_name}\n"
+            f"⏰ График: {work_start:02d}:00 - {work_end:02d}:00\n"
+            f"📋 Услуг: {services_count}\n"
+            f"🌍 Таймзона: {tz_text}\n"
+        )
+
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚙️ Открыть настройки", callback_data="admin_settings")],
+            [InlineKeyboardButton(text="📝 Изменить название", callback_data="settings_edit_name")],
+            [InlineKeyboardButton(text="⏰ Изменить график", callback_data="settings_edit_hours")],
+            [InlineKeyboardButton(text="🌍 Таймзона", callback_data="settings_edit_timezone")],
+            [InlineKeyboardButton(text="📋 Управление услугами", callback_data="admin_services")],
         ])
-        await message.answer("⚙️ <b>Настройки бизнеса</b>", reply_markup=keyboard)
+
+        await message.answer(text, reply_markup=keyboard)
 
     async def reply_texts_handler(message: Message):
         """Тексты бота"""
@@ -1821,12 +2031,12 @@ async def main():
     dp.message.register(reply_orders_today_handler, F.text == "📅 Сегодня")
     dp.message.register(reply_orders_tomorrow_handler, F.text == "📅 Завтра")
     dp.message.register(reply_orders_week_handler, F.text == "📅 Неделя")
-    dp.message.register(reply_csv_handler, F.text == "📥 CSV")
+    # CSV теперь доступен через inline-кнопку в статистике
 
     # Раздел УСЛУГИ
     dp.message.register(reply_promotions_handler, F.text == "🎁 Акции")
     dp.message.register(reply_services_list_handler, F.text == "📋 Список услуг")
-    dp.message.register(reply_add_service_handler, F.text == "➕ Добавить")
+    dp.message.register(reply_add_service_handler, F.text == "➕ Добавить услугу")
 
     # Раздел ПЕРСОНАЛ
     dp.message.register(reply_add_master_handler, F.text == "➕ Добавить мастера")
@@ -1856,6 +2066,7 @@ async def main():
     dp.message.register(process_pin, AdminPinStates.waiting_pin)
     dp.message.register(process_date_from, AdminOrdersStates.input_date_from)
     dp.message.register(process_date_to, AdminOrdersStates.input_date_to)
+    dp.message.register(process_stats_date, AdminOrdersStates.input_stats_date)
     dp.message.register(unknown_message, StateFilter(None), ~F.text.startswith("/"))
     
     # Callback handlers
@@ -1878,6 +2089,11 @@ async def main():
     dp.callback_query.register(admin_services_all_handler, F.data == "admin_services_all")
     dp.callback_query.register(admin_services_by_category_handler, F.data.startswith("admin_services_cat:"))
     dp.callback_query.register(admin_services_menu_handler, F.data == "admin_services_menu")
+
+    # Статистика с выбором периода
+    dp.callback_query.register(stats_period_handler, F.data.startswith("stats_period:"))
+    dp.callback_query.register(stats_custom_date_handler, F.data == "stats_custom_date")
+    dp.callback_query.register(stats_back_handler, F.data == "stats_back")
     
     logger.info(f"🚀 Admin Bot for '{config.get('business_name')}' started!")
 

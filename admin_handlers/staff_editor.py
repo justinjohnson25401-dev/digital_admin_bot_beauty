@@ -993,44 +993,206 @@ async def save_master_services(callback: CallbackQuery, state: FSMContext, confi
 
 
 @router.callback_query(F.data.startswith("edit_master_schedule_"))
-async def edit_master_schedule(callback: CallbackQuery, config: dict):
-    """Изменить график мастера"""
+async def edit_master_schedule(callback: CallbackQuery, config: dict, state: FSMContext):
+    """Изменить график мастера — шаг 1: выбор дней недели"""
 
     master_id = callback.data.replace("edit_master_schedule_", "")
 
-    text = "📅 <b>ИЗМЕНЕНИЕ ГРАФИКА</b>\n\nВыберите новый шаблон графика:"
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m['id'] == master_id), None)
 
-    templates = StaffManager.get_schedule_templates()
+    if not master:
+        await callback.answer("❌ Мастер не найден", show_alert=True)
+        return
 
-    keyboard_rows = []
-    for template_id, description in templates.items():
-        keyboard_rows.append([
-            InlineKeyboardButton(
-                text=f"📅 {description}",
-                callback_data=f"apply_schedule_{master_id}_{template_id}"
-            )
-        ])
+    # Получаем текущие рабочие дни из расписания мастера
+    schedule = master.get('schedule', {})
+    current_days = [day for day, info in schedule.items() if isinstance(info, dict) and info.get('working', False)]
 
-    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_master_{master_id}")])
+    await state.update_data(editing_master_id=master_id, edit_schedule_days=current_days)
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+    text = f"""
+📅 <b>ИЗМЕНЕНИЕ ГРАФИКА: {master['name']}</b>
+
+Шаг 1 из 2: Выберите рабочие дни.
+
+Нажимайте на дни для выбора/отмены:
+"""
+
+    keyboard = _build_edit_schedule_days_keyboard(current_days, master_id)
 
     await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.edit_schedule_days)
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("apply_schedule_"))
-async def apply_new_schedule(callback: CallbackQuery, config: dict, config_manager):
-    """Применить новый шаблон графика"""
+def _build_edit_schedule_days_keyboard(selected_days: list, master_id: str) -> InlineKeyboardMarkup:
+    """Клавиатура для выбора дней при редактировании графика"""
+    days = [
+        ('monday', 'Понедельник'),
+        ('tuesday', 'Вторник'),
+        ('wednesday', 'Среда'),
+        ('thursday', 'Четверг'),
+        ('friday', 'Пятница'),
+        ('saturday', 'Суббота'),
+        ('sunday', 'Воскресенье'),
+    ]
 
-    parts = callback.data.replace("apply_schedule_", "").split("_", 1)
-    if len(parts) != 2:
-        await callback.answer("❌ Ошибка", show_alert=True)
+    keyboard_rows = []
+    for day_id, day_name in days:
+        is_selected = day_id in selected_days
+        mark = "☑" if is_selected else "☐"
+        keyboard_rows.append([
+            InlineKeyboardButton(
+                text=f"{mark} {day_name}",
+                callback_data=f"edit_sched_day_{day_id}"
+            )
+        ])
+
+    keyboard_rows.append([InlineKeyboardButton(text="✅ Продолжить", callback_data="edit_sched_days_done")])
+    keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_master_{master_id}")])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+
+@router.callback_query(F.data.startswith("edit_sched_day_"), StaffEditorStates.edit_schedule_days)
+async def toggle_edit_schedule_day(callback: CallbackQuery, state: FSMContext):
+    """Переключить день при редактировании графика"""
+
+    day_id = callback.data.replace("edit_sched_day_", "")
+
+    data = await state.get_data()
+    selected_days = data.get('edit_schedule_days', [])
+    master_id = data.get('editing_master_id')
+
+    if day_id in selected_days:
+        selected_days.remove(day_id)
+    else:
+        selected_days.append(day_id)
+
+    await state.update_data(edit_schedule_days=selected_days)
+
+    keyboard = _build_edit_schedule_days_keyboard(selected_days, master_id)
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "edit_sched_days_done", StaffEditorStates.edit_schedule_days)
+async def edit_schedule_days_done(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Дни выбраны — переход к выбору времени"""
+
+    data = await state.get_data()
+    selected_days = data.get('edit_schedule_days', [])
+    master_id = data.get('editing_master_id')
+
+    if not selected_days:
+        await callback.answer("❌ Выберите хотя бы один день", show_alert=True)
         return
 
-    master_id, template_id = parts
+    # Форматируем выбранные дни
+    days_short = {
+        'monday': 'Пн', 'tuesday': 'Вт', 'wednesday': 'Ср',
+        'thursday': 'Чт', 'friday': 'Пт', 'saturday': 'Сб', 'sunday': 'Вс'
+    }
+    days_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    sorted_days = [d for d in days_order if d in selected_days]
+    days_text = ', '.join([days_short[d] for d in sorted_days])
 
-    schedule = StaffManager.create_default_schedule(template_id)
+    # Получаем часы работы бизнеса из конфига
+    booking = config.get('booking', {})
+    business_start = int(booking.get('work_start', 10))
+    business_end = int(booking.get('work_end', 20))
+
+    text = f"""
+📅 <b>ИЗМЕНЕНИЕ ГРАФИКА</b>
+
+✅ Рабочие дни: <b>{days_text}</b>
+
+Шаг 2 из 2: Выберите время работы:
+
+<i>💡 Часы работы бизнеса: {business_start:02d}:00 - {business_end:02d}:00</i>
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"⭐ По графику бизнеса ({business_start:02d}:00 - {business_end:02d}:00)", callback_data=f"edit_hours_{business_start:02d}_{business_end:02d}")],
+        [InlineKeyboardButton(text="🕘 09:00 - 18:00", callback_data="edit_hours_09_18")],
+        [InlineKeyboardButton(text="🕙 10:00 - 19:00", callback_data="edit_hours_10_19")],
+        [InlineKeyboardButton(text="🕙 10:00 - 20:00", callback_data="edit_hours_10_20")],
+        [InlineKeyboardButton(text="🕛 12:00 - 21:00", callback_data="edit_hours_12_21")],
+        [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data="edit_hours_custom")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_master_schedule_{master_id}")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.edit_schedule_hours)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "edit_hours_custom", StaffEditorStates.edit_schedule_hours)
+async def edit_hours_custom_start(callback: CallbackQuery, state: FSMContext):
+    """Ручной ввод времени при редактировании графика"""
+
+    data = await state.get_data()
+    master_id = data.get('editing_master_id')
+
+    text = """
+✏️ <b>РУЧНОЙ ВВОД ВРЕМЕНИ</b>
+
+Введите время работы в формате: <b>ЧЧ:ММ-ЧЧ:ММ</b>
+
+Примеры:
+• 09:00-18:00
+• 10:30-19:30
+• 08:00-22:00
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="edit_sched_days_done")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(StaffEditorStates.edit_schedule_custom_hours)
+    await callback.answer()
+
+
+@router.message(StaffEditorStates.edit_schedule_custom_hours)
+async def edit_hours_custom_save(message: Message, state: FSMContext, config: dict, config_manager):
+    """Сохранить отредактированный график с ручным временем"""
+    import re
+
+    hours_text = message.text.strip()
+
+    # Проверяем формат
+    match = re.match(r'^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$', hours_text)
+    if not match:
+        await message.answer("❌ Неверный формат. Введите в формате ЧЧ:ММ-ЧЧ:ММ\n\nПример: 10:00-19:00")
+        return
+
+    start_h, start_m, end_h, end_m = map(int, match.groups())
+
+    if start_h > 23 or end_h > 23 or start_m > 59 or end_m > 59:
+        await message.answer("❌ Некорректное время. Часы: 0-23, минуты: 0-59")
+        return
+
+    if start_h > end_h or (start_h == end_h and start_m >= end_m):
+        await message.answer("❌ Время начала должно быть раньше времени окончания")
+        return
+
+    start_time = f"{start_h:02d}:{start_m:02d}"
+    end_time = f"{end_h:02d}:{end_m:02d}"
+
+    data = await state.get_data()
+    master_id = data.get('editing_master_id')
+    selected_days = data.get('edit_schedule_days', [])
+
+    # Создаём новый график
+    schedule = {}
+    all_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for day in all_days:
+        if day in selected_days:
+            schedule[day] = {"working": True, "start": start_time, "end": end_time}
+        else:
+            schedule[day] = {"working": False}
 
     # Сохраняем
     editor = get_config_editor(config)
@@ -1044,13 +1206,97 @@ async def apply_new_schedule(callback: CallbackQuery, config: dict, config_manag
 
     config_manager.config['staff'] = config['staff']
 
-    templates = StaffManager.get_schedule_templates()
-    schedule_desc = templates.get(template_id, template_id)
+    days_short = {
+        'monday': 'Пн', 'tuesday': 'Вт', 'wednesday': 'Ср',
+        'thursday': 'Чт', 'friday': 'Пт', 'saturday': 'Сб', 'sunday': 'Вс'
+    }
+    days_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    sorted_days = [d for d in days_order if d in selected_days]
+    days_text = ', '.join([days_short[d] for d in sorted_days])
 
-    await callback.answer(f"✅ График обновлён: {schedule_desc}")
+    text = f"""
+✅ <b>ГРАФИК ОБНОВЛЁН!</b>
 
-    # Возвращаемся к мастеру
-    await edit_master_show(callback, config)
+📅 Дни: {days_text}
+🕐 Время: {start_time} - {end_time}
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 К мастеру", callback_data=f"edit_master_{master_id}")],
+        [InlineKeyboardButton(text="👥 К персоналу", callback_data="staff_menu")],
+    ])
+
+    await message.answer(text, reply_markup=keyboard)
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("edit_hours_"), StaffEditorStates.edit_schedule_hours)
+async def edit_hours_selected(callback: CallbackQuery, state: FSMContext, config: dict, config_manager):
+    """Сохранить отредактированный график с выбранным временем"""
+
+    hours_data = callback.data.replace("edit_hours_", "")
+
+    # Пропускаем custom — обрабатывается отдельно
+    if hours_data == "custom":
+        return
+
+    parts = hours_data.split("_")
+    if len(parts) != 2:
+        await callback.answer("❌ Ошибка формата", show_alert=True)
+        return
+
+    start_hour, end_hour = parts
+    start_time = f"{start_hour}:00"
+    end_time = f"{end_hour}:00"
+
+    data = await state.get_data()
+    master_id = data.get('editing_master_id')
+    selected_days = data.get('edit_schedule_days', [])
+
+    # Создаём новый график
+    schedule = {}
+    all_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for day in all_days:
+        if day in selected_days:
+            schedule[day] = {"working": True, "start": start_time, "end": end_time}
+        else:
+            schedule[day] = {"working": False}
+
+    # Сохраняем
+    editor = get_config_editor(config)
+    editor.update_master(master_id, {'schedule': schedule})
+
+    # Обновляем в памяти
+    for master in config.get('staff', {}).get('masters', []):
+        if master['id'] == master_id:
+            master['schedule'] = schedule
+            break
+
+    config_manager.config['staff'] = config['staff']
+
+    days_short = {
+        'monday': 'Пн', 'tuesday': 'Вт', 'wednesday': 'Ср',
+        'thursday': 'Чт', 'friday': 'Пт', 'saturday': 'Сб', 'sunday': 'Вс'
+    }
+    days_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    sorted_days = [d for d in days_order if d in selected_days]
+    days_text = ', '.join([days_short[d] for d in sorted_days])
+
+    text = f"""
+✅ <b>ГРАФИК ОБНОВЛЁН!</b>
+
+📅 Дни: {days_text}
+🕐 Время: {start_time} - {end_time}
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 К мастеру", callback_data=f"edit_master_{master_id}")],
+        [InlineKeyboardButton(text="👥 К персоналу", callback_data="staff_menu")],
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.clear()
+    await callback.answer("✅ График обновлён!")
 
 
 # ==================== УДАЛЕНИЕ МАСТЕРА ====================
@@ -1246,47 +1492,263 @@ async def show_master_closed_dates(callback: CallbackQuery, config: dict):
 
 
 @router.callback_query(F.data.startswith("add_closed_"))
-async def add_closed_date_start(callback: CallbackQuery, state: FSMContext):
-    """Начать добавление закрытой даты"""
+async def add_closed_date_start(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Начать добавление закрытых дат — мультиселект"""
 
     master_id = callback.data.replace("add_closed_", "")
 
-    # Показываем ближайшие 14 дней
+    masters = config.get('staff', {}).get('masters', [])
+    master = next((m for m in masters if m['id'] == master_id), None)
+
+    if not master:
+        await callback.answer("❌ Мастер не найден", show_alert=True)
+        return
+
+    # Получаем уже закрытые даты мастера
+    existing_closed = set()
+    for cd in master.get('closed_dates', []):
+        existing_closed.add(cd.get('date'))
+
+    # Инициализируем выбранные даты
+    await state.update_data(
+        closing_master_id=master_id,
+        selected_closed_dates=[],
+        existing_closed_dates=list(existing_closed)
+    )
+
+    text = f"""
+📅 <b>ДОБАВЛЕНИЕ ЗАКРЫТЫХ ДАТ: {master['name']}</b>
+
+Выберите даты, которые нужно закрыть.
+Нажимайте на даты для выбора/отмены:
+
+<i>✅ — уже закрытые даты</i>
+"""
+
+    keyboard = _build_closed_dates_multiselect_keyboard(master_id, [], existing_closed)
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(ClosedDatesStates.select_dates)
+    await callback.answer()
+
+
+def _build_closed_dates_multiselect_keyboard(master_id: str, selected: list, existing: set) -> InlineKeyboardMarkup:
+    """Клавиатура с мультиселектом дат для закрытия"""
     today = datetime.now().date()
-    dates = []
-    for i in range(14):
-        d = today + timedelta(days=i)
-        dates.append(d)
 
     keyboard_rows = []
     row = []
-    for d in dates:
+
+    for i in range(14):
+        d = today + timedelta(days=i)
+        date_str = d.isoformat()
         day_name = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][d.weekday()]
-        btn_text = f"{d.day:02d}.{d.month:02d} {day_name}"
-        row.append(InlineKeyboardButton(
-            text=btn_text,
-            callback_data=f"select_closed_date_{master_id}_{d.isoformat()}"
-        ))
-        if len(row) == 3:
+
+        if date_str in existing:
+            # Уже закрыта
+            btn_text = f"✅ {d.day:02d}.{d.month:02d}"
+            callback_data = f"closed_date_exists"  # Неактивная кнопка
+        elif date_str in selected:
+            # Выбрана для закрытия
+            btn_text = f"☑ {d.day:02d}.{d.month:02d}"
+            callback_data = f"toggle_closed_{date_str}"
+        else:
+            # Доступна для выбора
+            btn_text = f"☐ {d.day:02d}.{d.month:02d}"
+            callback_data = f"toggle_closed_{date_str}"
+
+        row.append(InlineKeyboardButton(text=btn_text, callback_data=callback_data))
+
+        if len(row) == 4:
             keyboard_rows.append(row)
             row = []
 
     if row:
         keyboard_rows.append(row)
 
+    keyboard_rows.append([
+        InlineKeyboardButton(text="✅ Сохранить выбранные", callback_data="save_closed_dates"),
+        InlineKeyboardButton(text="✏️ Ввести дату", callback_data="closed_enter_manual"),
+    ])
     keyboard_rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"closed_dates_{master_id}")])
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
-    text = "📅 <b>ДОБАВЛЕНИЕ ЗАКРЫТОЙ ДАТЫ</b>\n\nВыберите дату:"
+
+@router.callback_query(F.data == "closed_date_exists", ClosedDatesStates.select_dates)
+async def closed_date_exists_info(callback: CallbackQuery):
+    """Информация о том, что дата уже закрыта"""
+    await callback.answer("Эта дата уже закрыта", show_alert=False)
+
+
+@router.callback_query(F.data.startswith("toggle_closed_"), ClosedDatesStates.select_dates)
+async def toggle_closed_date_selection(callback: CallbackQuery, state: FSMContext):
+    """Переключить выбор даты"""
+
+    date_str = callback.data.replace("toggle_closed_", "")
+
+    data = await state.get_data()
+    selected = data.get('selected_closed_dates', [])
+    master_id = data.get('closing_master_id')
+    existing = set(data.get('existing_closed_dates', []))
+
+    if date_str in selected:
+        selected.remove(date_str)
+    else:
+        selected.append(date_str)
+
+    await state.update_data(selected_closed_dates=selected)
+
+    keyboard = _build_closed_dates_multiselect_keyboard(master_id, selected, existing)
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "save_closed_dates", ClosedDatesStates.select_dates)
+async def save_multiple_closed_dates(callback: CallbackQuery, state: FSMContext, config: dict, config_manager):
+    """Сохранить выбранные закрытые даты"""
+
+    data = await state.get_data()
+    selected = data.get('selected_closed_dates', [])
+    master_id = data.get('closing_master_id')
+
+    if not selected:
+        await callback.answer("❌ Выберите хотя бы одну дату", show_alert=True)
+        return
+
+    # Сохраняем все выбранные даты
+    editor = get_config_editor(config)
+
+    for date_str in selected:
+        editor.add_closed_date(master_id, date_str, "")
+
+    # Обновляем в памяти
+    for master in config.get('staff', {}).get('masters', []):
+        if master['id'] == master_id:
+            if 'closed_dates' not in master:
+                master['closed_dates'] = []
+            for date_str in selected:
+                master['closed_dates'].append({'date': date_str, 'reason': ''})
+            break
+
+    config_manager.config['staff'] = config['staff']
+
+    # Форматируем даты для отображения
+    dates_display = []
+    for date_str in sorted(selected):
+        date_obj = datetime.fromisoformat(date_str).date()
+        dates_display.append(date_obj.strftime('%d.%m.%Y'))
+
+    await callback.answer(f"✅ Закрыто дат: {len(selected)}")
+    await state.clear()
+
+    # Возвращаемся к закрытым датам
+    await show_master_closed_dates(callback, config)
+
+
+@router.callback_query(F.data == "closed_enter_manual", ClosedDatesStates.select_dates)
+async def closed_enter_manual_start(callback: CallbackQuery, state: FSMContext):
+    """Начать ручной ввод даты"""
+
+    data = await state.get_data()
+    master_id = data.get('closing_master_id')
+
+    text = """
+✏️ <b>РУЧНОЙ ВВОД ДАТЫ</b>
+
+Введите дату или диапазон дат:
+
+• <code>15.01.2026</code> — одна дата
+• <code>15.01.2026-20.01.2026</code> — диапазон (отпуск)
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"add_closed_{master_id}")],
+    ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(ClosedDatesStates.enter_date)
     await callback.answer()
+
+
+@router.message(ClosedDatesStates.enter_date)
+async def process_manual_closed_date(message: Message, state: FSMContext, config: dict, config_manager):
+    """Обработка ручного ввода даты"""
+    import re
+
+    text = message.text.strip()
+    data = await state.get_data()
+    master_id = data.get('closing_master_id')
+
+    # Проверяем формат: одна дата или диапазон
+    single_date = re.match(r'^(\d{2})\.(\d{2})\.(\d{4})$', text)
+    date_range = re.match(r'^(\d{2})\.(\d{2})\.(\d{4})-(\d{2})\.(\d{2})\.(\d{4})$', text)
+
+    dates_to_close = []
+
+    try:
+        if single_date:
+            day, month, year = single_date.groups()
+            date_obj = datetime(int(year), int(month), int(day)).date()
+            dates_to_close.append(date_obj.isoformat())
+
+        elif date_range:
+            d1, m1, y1, d2, m2, y2 = date_range.groups()
+            date_from = datetime(int(y1), int(m1), int(d1)).date()
+            date_to = datetime(int(y2), int(m2), int(d2)).date()
+
+            if date_to < date_from:
+                await message.answer("❌ Дата окончания должна быть позже даты начала")
+                return
+
+            # Генерируем все даты в диапазоне
+            current = date_from
+            while current <= date_to:
+                dates_to_close.append(current.isoformat())
+                current += timedelta(days=1)
+        else:
+            await message.answer("❌ Неверный формат. Используйте:\n• 15.01.2026\n• 15.01.2026-20.01.2026")
+            return
+
+        # Сохраняем все даты
+        editor = get_config_editor(config)
+        for date_str in dates_to_close:
+            editor.add_closed_date(master_id, date_str, "")
+
+        # Обновляем в памяти
+        for master in config.get('staff', {}).get('masters', []):
+            if master['id'] == master_id:
+                if 'closed_dates' not in master:
+                    master['closed_dates'] = []
+                for date_str in dates_to_close:
+                    # Проверяем, нет ли уже этой даты
+                    existing_dates = [cd.get('date') for cd in master['closed_dates']]
+                    if date_str not in existing_dates:
+                        master['closed_dates'].append({'date': date_str, 'reason': ''})
+                break
+
+        config_manager.config['staff'] = config['staff']
+
+        if len(dates_to_close) == 1:
+            date_display = datetime.fromisoformat(dates_to_close[0]).strftime('%d.%m.%Y')
+            result_text = f"✅ Дата {date_display} закрыта"
+        else:
+            result_text = f"✅ Закрыто дат: {len(dates_to_close)}"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📅 К закрытым датам", callback_data=f"closed_dates_{master_id}")],
+        ])
+
+        await message.answer(result_text, reply_markup=keyboard)
+        await state.clear()
+
+    except ValueError:
+        await message.answer("❌ Некорректная дата. Проверьте формат.")
 
 
 @router.callback_query(F.data.startswith("select_closed_date_"))
 async def select_closed_date(callback: CallbackQuery, state: FSMContext):
-    """Выбрана дата для закрытия"""
+    """Выбрана дата для закрытия (старый формат — для совместимости)"""
 
     # Используем rsplit для корректной обработки master_id с подчёркиваниями
     # Формат: select_closed_date_{master_id}_{YYYY-MM-DD}

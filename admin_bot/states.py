@@ -90,6 +90,9 @@ class StaffEditorStates(StatesGroup):
     edit_role = State()
     edit_services = State()
     edit_schedule = State()
+    edit_schedule_days = State()  # Мультиселект дней при редактировании графика
+    edit_schedule_hours = State()  # Выбор времени при редактировании графика
+    edit_schedule_custom_hours = State()  # Ручной ввод времени при редактировании
 
     # Управление графиком (закрытые даты)
     manage_schedule = State()
@@ -127,6 +130,7 @@ class ClosedDatesStates(StatesGroup):
     choose_master = State()
     show_dates = State()
     add_date = State()
-    enter_date = State()
+    select_dates = State()  # Мультиселект дат
+    enter_date = State()  # Ручной ввод даты
     enter_reason = State()
     confirm_remove = State()
