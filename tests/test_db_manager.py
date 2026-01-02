@@ -1,20 +1,28 @@
 import pytest
-import sqlite3
 import os
 from utils.db_manager import DBManager
 
 @pytest.fixture
 def db(tmp_path):
-    """Создаём временную БД для тестов используя pytest tmp_path"""
-    # tmp_path - встроенная фикстура pytest, гарантированно работает на всех ОС
-    db_file = tmp_path / "test.db"
+    """Создаём временную БД для тестов"""
+    # DBManager ожидает business_slug, а не полный путь
+    # Он сам формирует путь как db_{slug}.sqlite
     
-    db = DBManager(str(db_file))
-    db.init_db()
+    # Переходим в tmp_path, чтобы БД создалась там
+    original_dir = os.getcwd()
+    os.chdir(tmp_path)
     
-    yield db
-    
-    db.close()
+    try:
+        # Передаём только slug, DBManager сам добавит префикс db_ и .sqlite
+        db = DBManager("test")
+        db.init_db()
+        
+        yield db
+        
+        db.close()
+    finally:
+        # Возвращаемся в оригинальную директорию
+        os.chdir(original_dir)
 
 def test_create_order(db):
     """Создание заказа работает"""
