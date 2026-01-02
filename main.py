@@ -22,7 +22,7 @@ from utils.config_loader import load_config # MODIFIED
 # Импортируем handlers
 from handlers import start
 from handlers.booking import booking_router
-from handlers import mybookings
+from handlers.mybookings import mybookings_router
 
 
 async def watch_config_updates(config_path: str, config: dict, poll_interval_seconds: float = 3.0):
@@ -152,7 +152,7 @@ async def main():
     watcher_task = asyncio.create_task(watch_config_updates(args.config_dir, config))
 
     dp.include_router(start.router)
-    dp.include_router(mybookings.router)
+    dp.include_router(mybookings_router)
     dp.include_router(booking_router)
     
     from aiogram.filters import StateFilter
