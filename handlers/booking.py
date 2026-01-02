@@ -863,17 +863,21 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: di
         # Уведомляем админов
         try:
             await send_order_to_admins(
-                config=config,
-                order_id=order_id,
-                user=callback.from_user,
-                service_name=service_name,
-                price=price,
-                booking_date=booking_date,
-                booking_time=booking_time,
-                client_name=client_name,
-                phone=phone,
-                comment=comment,
-                master_name=data.get('master_name'),
+                bot=callback.message.bot,
+                admin_ids=config.get('admin_ids', []),
+                order_data={
+                    'order_id': order_id,
+                    'user_id': user_id,
+                    'service_name': service_name,
+                    'price': price,
+                    'booking_date': booking_date,
+                    'booking_time': booking_time,
+                    'client_name': client_name,
+                    'phone': phone,
+                    'username': callback.from_user.username,
+                    'master_name': data.get('master_name')
+                },
+                business_name=config.get('business_name', ''),
                 db_manager=db_manager
             )
         except Exception as e:
@@ -902,9 +906,17 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: di
         await state.set_state(BookingState.choosing_time)
 
     except Exception as e:
-        logger.error(f"Error creating booking for user {user_id}: {e}")
+        logger.exception(f"Error creating booking for user {user_id}: {e}")
+        # Откат: если заказ был создан, отменяем его
+        if 'order_id' in locals() and order_id:
+            try:
+                db_manager.cancel_order(order_id)
+                logger.info(f"Rolled back order {order_id} due to error")
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback order {order_id}: {rollback_error}")
         await state.update_data(booking_confirmed=False)
-        await callback.answer("❌ Ошибка при создании записи", show_alert=True)
+        await callback.answer("❌ Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
+        await state.clear()
 
 
 # === EDIT HANDLERS DURING CONFIRMATION ===
