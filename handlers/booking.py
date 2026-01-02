@@ -849,7 +849,7 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, config: di
 
         success_text = config.get('messages', {}).get('success',
             "✅ Запись #{id} успешно создана!"
-        ).format(id=order_id)
+        ).format(id=order_id, date=date_formatted, time=booking_time)
 
         master_text = f"\n👤 Мастер: {data.get('master_name')}" if data.get('master_name') else ""
 
