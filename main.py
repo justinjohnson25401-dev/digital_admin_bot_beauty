@@ -20,7 +20,9 @@ from utils.db_manager import DBManager
 from logger import setup_logger  # Импортируем настройку логгера
 
 # Импортируем handlers
-from handlers import start, booking, mybookings
+from handlers import start
+from handlers.booking import booking_router
+from handlers import mybookings
 
 def load_config(config_path: str) -> dict:
     """Загрузка конфигурации из JSON"""
@@ -180,7 +182,7 @@ async def main():
     # Подключаем роутеры
     dp.include_router(start.router)
     dp.include_router(mybookings.router)
-    dp.include_router(booking.router)
+    dp.include_router(booking_router)
     
     # Fallback для неизвестных сообщений
     from aiogram.filters import StateFilter
