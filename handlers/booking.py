@@ -16,12 +16,6 @@ router = Router()
 
 FSM_TTL_SECONDS = 30 * 60
 
-DAYS_RU = {
-    'Monday': 'Пн', 'Tuesday': 'Вт', 'Wednesday': 'Ср',
-    'Thursday': 'Чт', 'Friday': 'Пт', 'Saturday': 'Сб', 'Sunday': 'Вс'
-}
-
-
 async def _ensure_fsm_fresh(state: FSMContext, message: Message = None, callback: CallbackQuery = None) -> bool:
     data = await state.get_data()
     started_at = data.get('fsm_started_at')
@@ -38,13 +32,11 @@ async def _ensure_fsm_fresh(state: FSMContext, message: Message = None, callback
         await message.answer(text)
     return False
 
-
 def get_cancel_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="❌ Отменить")]],
         resize_keyboard=True
     )
-
 
 def get_phone_input_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
@@ -56,7 +48,6 @@ def get_phone_input_keyboard() -> ReplyKeyboardMarkup:
         resize_keyboard=True
     )
 
-
 def get_comment_choice_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -64,7 +55,6 @@ def get_comment_choice_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="➡️ Пропустить", callback_data="skip_comment")
         ]
     ])
-
 
 def is_date_closed_for_master(config: dict, master_id: str, date_obj) -> tuple:
     if not master_id:
@@ -78,26 +68,55 @@ def is_date_closed_for_master(config: dict, master_id: str, date_obj) -> tuple:
             return True, closed.get('reason', '')
     return False, None
 
-
-def generate_dates_keyboard(back_callback: str = "back_to_masters", config: dict = None, master_id: str = None) -> InlineKeyboardMarkup:
-    buttons = []
+def generate_dates_keyboard(config: dict = None, master_id: str = None) -> InlineKeyboardMarkup:
+    """
+    Генерирует упрощённую клавиатуру выбора даты:
+    - Сегодня
+    - Завтра
+    - Другой день (календарь)
+    """
+    from datetime import datetime, timedelta
+    
     today = datetime.now().date()
-    for i in range(7):
-        date = today + timedelta(days=i)
-        day_name = DAYS_RU.get(date.strftime('%A'), date.strftime('%a'))
-        is_closed, reason = is_date_closed_for_master(config, master_id, date) if config else (False, None)
-        if is_closed:
-            buttons.append([InlineKeyboardButton(text=f"🚫 {day_name} {date.strftime('%d.%m')} (закрыто)", callback_data="date_closed")])
-        else:
-            text = f"📅 {day_name} {date.strftime('%d.%m')}"
-            if i == 0:
-                text += " — Сегодня"
-            elif i == 1:
-                text += " — Завтра"
-            buttons.append([InlineKeyboardButton(text=text, callback_data=f"date:{date.isoformat()}")])
-    buttons.append([InlineKeyboardButton(text="📝 Ввести дату вручную", callback_data="input_custom_date")])
+    tomorrow = (datetime.now() + timedelta(days=1)).date()
+    
+    buttons = []
+    
+    # Проверяем, не закрыта ли дата для мастера
+    is_today_closed, _ = is_date_closed_for_master(config, master_id, today) if config else (False, None)
+    is_tomorrow_closed, _ = is_date_closed_for_master(config, master_id, tomorrow) if config else (False, None)
+    
+    # Кнопка "Сегодня"
+    if not is_today_closed:
+        buttons.append([InlineKeyboardButton(
+            text="📅 Сегодня", 
+            callback_data=f"quick_date:{today.isoformat()}"
+        )])
+    else:
+        buttons.append([InlineKeyboardButton(
+            text="🚫 Сегодня (закрыто)", 
+            callback_data="date_closed"
+        )])
+    
+    # Кнопка "Завтра"
+    if not is_tomorrow_closed:
+        buttons.append([InlineKeyboardButton(
+            text="📅 Завтра", 
+            callback_data=f"quick_date:{tomorrow.isoformat()}"
+        )])
+    else:
+        buttons.append([InlineKeyboardButton(
+            text="🚫 Завтра (закрыто)", 
+            callback_data="date_closed"
+        )])
+    
+    # Кнопка "Другой день" (открывает календарь)
+    buttons.append([InlineKeyboardButton(
+        text="📅 Другой день", 
+        callback_data="open_calendar"
+    )])
+    
     return InlineKeyboardMarkup(inline_keyboard=buttons)
-
 
 def generate_time_slots_keyboard(config: dict, db_manager, booking_date: str,
                                   master_id: str = None, exclude_order_id: int = None) -> InlineKeyboardMarkup:
@@ -142,7 +161,6 @@ def generate_time_slots_keyboard(config: dict, db_manager, booking_date: str,
         current_minutes += slot_duration
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-
 def get_categories_from_services(services: list) -> list:
     categories = []
     seen = set()
@@ -153,10 +171,8 @@ def get_categories_from_services(services: list) -> list:
             categories.append(cat)
     return categories
 
-
 def get_services_by_category(services: list, category: str) -> list:
     return [s for s in services if s.get('category', 'Другое') == category]
-
 
 def get_masters_for_service(config: dict, service_id: str) -> list:
     staff = config.get('staff', {})
@@ -164,7 +180,6 @@ def get_masters_for_service(config: dict, service_id: str) -> list:
         return []
     masters = staff.get('masters', [])
     return [m for m in masters if m.get('active', True) and (service_id in m.get('services', []) or not m.get('services', []))]
-
 
 def get_master_by_id(config: dict, master_id: str) -> dict:
     return next((m for m in config.get('staff', {}).get('masters', []) if m.get('id') == master_id), None)
@@ -314,28 +329,53 @@ async def master_selected(callback: CallbackQuery, state: FSMContext, config: di
     await state.set_state(BookingState.choosing_date)
     await callback.answer()
 
-@router.callback_query(BookingState.choosing_date, F.data.startswith("date:"))
-async def date_selected(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
-    if not await _ensure_fsm_fresh(state, callback=callback): return
-    booking_date = callback.data.split(":")[1]
+@router.callback_query(BookingState.choosing_date, F.data.startswith("quick_date:"))
+async def quick_date_selected(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
+    """Быстрый выбор даты (сегодня/завтра)"""
+    if not await _ensure_fsm_fresh(state, callback=callback): 
+        return
+    
+    date_str = callback.data.split(":", 1)[1]  # "2026-01-02"
+    
     try:
-        selected_date = datetime.fromisoformat(booking_date).date()
+        selected_date = datetime.fromisoformat(date_str).date()
     except Exception:
-        await callback.answer("Некорректная дата", show_alert=True)
+        await callback.answer("❌ Некорректная дата", show_alert=True)
         return
+    
+    # Проверка: дата не в прошлом
     if selected_date < datetime.now().date():
-        await callback.answer("Нельзя выбрать прошедшую дату", show_alert=True)
+        await callback.answer("❌ Нельзя выбрать прошедшую дату", show_alert=True)
         return
-
+    
     data = await state.get_data()
+    
+    # Проверка: дата не закрыта для мастера
     is_closed, reason = is_date_closed_for_master(config, data.get('master_id'), selected_date)
     if is_closed:
-        await callback.answer(f"❌ Мастер не работает в этот день{f' ({reason})' if reason else ''}", show_alert=True)
+        await callback.answer(
+            f"❌ Мастер не работает в этот день{f' ({reason})' if reason else ''}", 
+            show_alert=True
+        )
         return
-
-    await state.update_data(booking_date=booking_date)
-    keyboard = generate_time_slots_keyboard(config, db_manager, booking_date, master_id=data.get('master_id'))
-    await callback.message.edit_text(f"📅 Дата: {selected_date.strftime('%d.%m.%Y')}\n\nВыберите время:", reply_markup=keyboard)
+    
+    # Сохраняем выбранную дату
+    await state.update_data(booking_date=date_str)
+    
+    # Генерируем слоты времени
+    keyboard = generate_time_slots_keyboard(
+        config, 
+        db_manager, 
+        date_str, 
+        master_id=data.get('master_id')
+    )
+    
+    date_label = "Сегодня" if selected_date == datetime.now().date() else "Завтра"
+    
+    await callback.message.edit_text(
+        f"📅 {date_label} ({selected_date.strftime('%d.%m.%Y')})\n\nВыберите время:",
+        reply_markup=keyboard
+    )
     await state.set_state(BookingState.choosing_time)
     await callback.answer()
 
@@ -347,16 +387,17 @@ async def slot_taken_handler(callback: CallbackQuery):
 async def date_closed_handler(callback: CallbackQuery):
     await callback.answer("❌ Мастер не работает в этот день", show_alert=True)
 
-
 # --- Calendar Handlers (Universal) ---
 
-@router.callback_query(BookingState.choosing_date, F.data == "input_custom_date")
+@router.callback_query(BookingState.choosing_date, F.data == "open_calendar")
 async def show_calendar(callback: CallbackQuery, state: FSMContext, config: dict):
-    """Показать интерактивный календарь для выбора даты"""
+    """Открыть интерактивный календарь"""
+    from utils.calendar import generate_calendar_keyboard
     from datetime import datetime
     
     now = datetime.now()
     data = await state.get_data()
+    master_id = data.get('master_id')
     
     await state.update_data(
         calendar_year=now.year,
@@ -365,11 +406,10 @@ async def show_calendar(callback: CallbackQuery, state: FSMContext, config: dict
     )
     
     keyboard = generate_calendar_keyboard(
-        year=now.year,
-        month=now.month,
-        config=config,
-        master_id=data.get('master_id'),
-        mode="booking"
+        year=now.year, 
+        month=now.month, 
+        config=config, 
+        master_id=master_id
     )
     
     await callback.message.edit_text(
@@ -377,7 +417,6 @@ async def show_calendar(callback: CallbackQuery, state: FSMContext, config: dict
         reply_markup=keyboard
     )
     await callback.answer()
-
 
 @router.callback_query(BookingState.choosing_date, F.data == "cal_prev_month")
 async def calendar_prev_month(callback: CallbackQuery, state: FSMContext, config: dict):

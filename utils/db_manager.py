@@ -333,25 +333,23 @@ class DBManager:
             logger.error(f"Error adding order: {e}")
             raise
 
-    def check_slot_availability(self, booking_date: str, booking_time: str, master_id: str = None) -> bool:
+    def check_slot_availability(self, booking_date: str, booking_time: str, exclude_order_id: int = None) -> bool:
         """Проверка доступности слота (опционально для конкретного мастера)"""
         try:
             self._ensure_connection()
             cursor = self.connection.cursor()
 
-            if master_id:
-                # Проверка слота для конкретного мастера
-                cursor.execute("""
-                    SELECT COUNT(*) FROM orders
-                    WHERE booking_date = ? AND booking_time = ? AND master_id = ? AND status = 'active'
-                """, (booking_date, booking_time, master_id))
-            else:
-                # Общая проверка слота
-                cursor.execute("""
-                    SELECT COUNT(*) FROM orders
-                    WHERE booking_date = ? AND booking_time = ? AND status = 'active'
-                """, (booking_date, booking_time))
+            query = """
+                SELECT COUNT(*) FROM orders
+                WHERE booking_date = ? AND booking_time = ? AND status = 'active'
+            """
+            params = [booking_date, booking_time]
 
+            if exclude_order_id:
+                query += " AND id != ?"
+                params.append(exclude_order_id)
+
+            cursor.execute(query, params)
             count = cursor.fetchone()[0]
             return count == 0
 
@@ -375,45 +373,26 @@ class DBManager:
             logger.error(f"Error getting occupied slots for master: {e}")
             return []
 
-    # НОВОЕ: Метод для проверки доступности слота, исключая указанный заказ (ошибка #4)
-    def check_slot_availability_excluding(self, booking_date: str, booking_time: str, exclude_order_id: int) -> bool:
-        """Проверка доступности слота, исключая указанный заказ (для редактирования)"""
-        try:
-            self._ensure_connection()
-            cursor = self.connection.cursor()
-            cursor.execute("""
-                SELECT COUNT(*) FROM orders
-                WHERE booking_date = ? AND booking_time = ? AND status = 'active' AND id != ?
-            """, (booking_date, booking_time, exclude_order_id))
-
-            count = cursor.fetchone()[0]
-            return count == 0
-
-        except sqlite3.Error as e:
-            logger.error(f"Error checking slot availability excluding order: {e}")
-            return False
-
-    def check_slot_availability_for_master(self, booking_date: str, booking_time: str, master_id: str) -> bool:
+    def check_slot_availability_for_master(self, booking_date: str, booking_time: str, master_id: str, exclude_order_id: int = None) -> bool:
         """Проверка доступности слота для конкретного мастера (алиас)"""
-        return self.check_slot_availability(booking_date, booking_time, master_id)
-
-    def check_slot_availability_for_master_excluding(self, booking_date: str, booking_time: str,
-                                                      master_id: str, exclude_order_id: int) -> bool:
-        """Проверка доступности слота для мастера, исключая указанный заказ"""
         try:
             self._ensure_connection()
             cursor = self.connection.cursor()
-            cursor.execute("""
+            query = """
                 SELECT COUNT(*) FROM orders
-                WHERE booking_date = ? AND booking_time = ? AND master_id = ?
-                      AND status = 'active' AND id != ?
-            """, (booking_date, booking_time, master_id, exclude_order_id))
+                WHERE booking_date = ? AND booking_time = ? AND master_id = ? AND status = 'active'
+            """
+            params = [booking_date, booking_time, master_id]
 
+            if exclude_order_id:
+                query += " AND id != ?"
+                params.append(exclude_order_id)
+
+            cursor.execute(query, params)
             count = cursor.fetchone()[0]
             return count == 0
-
         except sqlite3.Error as e:
-            logger.error(f"Error checking slot availability for master excluding order: {e}")
+            logger.error(f"Error checking slot availability for master: {e}")
             return False
 
     # ИЗМЕНЕНО: Добавлена поддержка параметра active_only и master_id
@@ -695,3 +674,30 @@ class DBManager:
         if self.connection:
             self.connection.close()
             logger.info(f"Database connection closed: {self.db_path}")
+
+    def get_statistics_by_period(self, start_date: str, end_date: str) -> dict:
+        """
+        Получить статистику за указанный период
+        
+        :param start_date: Начальная дата (YYYY-MM-DD)
+        :param end_date: Конечная дата (YYYY-MM-DD)
+        :return: Словарь со статистикой
+        """
+        cursor = self.connection.execute("""
+            SELECT 
+                COUNT(*) as total_bookings,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
+                SUM(CASE WHEN status = 'completed' THEN price ELSE 0 END) as revenue
+            FROM orders
+            WHERE booking_date >= ? AND booking_date <= ?
+        """, (start_date, end_date))
+        
+        row = cursor.fetchone()
+        
+        return {
+            'total_bookings': row[0] or 0,
+            'completed': row[1] or 0,
+            'cancelled': row[2] or 0,
+            'revenue': row[3] or 0
+        }
