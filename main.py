@@ -16,8 +16,8 @@ load_dotenv()
 
 # Импорты из проекта
 from utils.db import DBManager
-from logger import setup_logger
-from utils.config_loader import load_config # MODIFIED
+from utils.logger import setup_logger
+from utils.config_loader import load_config
 
 # Импортируем handlers
 from handlers import start
