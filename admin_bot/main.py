@@ -201,10 +201,10 @@ def get_admin_reply_keyboard() -> ReplyKeyboardMarkup:
 
 
 def get_orders_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Клавиатура раздела Заказы (включает Статистику)"""
+    """Клавиатура раздела Заказы"""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="◀️ Назад"), KeyboardButton(text="📊 Статистика")],
+            [KeyboardButton(text="◀️ Назад")],
             [KeyboardButton(text="📅 Сегодня"), KeyboardButton(text="📅 Завтра")],
             [KeyboardButton(text="📅 Неделя"), KeyboardButton(text="📥 CSV")],
         ],
@@ -834,10 +834,78 @@ async def _admin_orders_render(callback, db_manager, config: dict, period: str, 
             InlineKeyboardButton(text="📅 Эта неделя", callback_data="admin_orders_week"),
             InlineKeyboardButton(text="📆 Все будущие", callback_data="admin_orders_all_future"),
         ],
-        [InlineKeyboardButton(text="📥 Выгрузить CSV", callback_data="admin_export_csv")],
+        [
+            InlineKeyboardButton(text="📊 Статистика", callback_data=f"admin_stats_period:{period}"),
+            InlineKeyboardButton(text="📥 CSV", callback_data="admin_export_csv"),
+        ],
     ])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+async def admin_stats_period_handler(callback, config: dict, db_manager):
+    """Статистика за выбранный период"""
+    from datetime import datetime, timedelta
+
+    try:
+        _, period = callback.data.split(":", 1)
+    except ValueError:
+        period = "today"
+
+    # Определяем период и заголовок
+    if period == "today":
+        title = f"📊 Статистика за сегодня ({datetime.now().strftime('%d.%m.%Y')})"
+        start_date = datetime.now().date().isoformat()
+        end_date = start_date
+    elif period == "tomorrow":
+        tomorrow = datetime.now().date() + timedelta(days=1)
+        title = f"📊 Статистика на завтра ({tomorrow.strftime('%d.%m.%Y')})"
+        start_date = tomorrow.isoformat()
+        end_date = start_date
+    elif period == "week":
+        today = datetime.now().date()
+        week_end = today + timedelta(days=7)
+        title = f"📊 Статистика за неделю ({today.strftime('%d.%m')} - {week_end.strftime('%d.%m.%Y')})"
+        start_date = today.isoformat()
+        end_date = week_end.isoformat()
+    else:  # all_future
+        title = "📊 Статистика (все будущие заказы)"
+        start_date = datetime.now().date().isoformat()
+        end_date = (datetime.now().date() + timedelta(days=365)).isoformat()
+
+    # Получаем статистику из БД
+    cursor = db_manager.connection.cursor()
+    cursor.execute("""
+        SELECT
+            COUNT(*) as total_orders,
+            COALESCE(SUM(price), 0) as total_revenue,
+            COUNT(DISTINCT user_id) as unique_clients
+        FROM orders
+        WHERE booking_date >= ? AND booking_date <= ?
+          AND status = 'active'
+    """, (start_date, end_date))
+
+    row = cursor.fetchone()
+    total_orders = row[0] or 0
+    total_revenue = row[1] or 0
+    unique_clients = row[2] or 0
+    avg_check = int(total_revenue / total_orders) if total_orders > 0 else 0
+
+    text = f"""
+{title}
+
+📦 Заказов: {total_orders}
+💰 Выручка: {total_revenue}₽
+📈 Средний чек: {avg_check}₽
+👥 Уникальных клиентов: {unique_clients}
+"""
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад к заказам", callback_data=f"admin_orders_page:{period}:0")],
+    ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
@@ -1779,12 +1847,34 @@ async def main():
         )
         await message.answer(text)
 
-    async def reply_business_settings_handler(message: Message):
-        """Настройки бизнеса"""
+    async def reply_business_settings_handler(message: Message, config: dict):
+        """Настройки бизнеса - показываем сразу без промежуточного экрана"""
+        booking = config.get('booking', {})
+
+        text = f"""
+⚙️ <b>НАСТРОЙКИ БИЗНЕСА</b>
+
+Текущие данные:
+━━━━━━━━━━━━━━━━━━━━━━
+📍 <b>Название:</b> {config.get('business_name', 'Не указано')}
+🕐 <b>Начало работы:</b> {int(booking.get('work_start', 10))}:00
+🕑 <b>Конец работы:</b> {int(booking.get('work_end', 20))}:00
+⏱ <b>Длительность слота:</b> {int(booking.get('slot_duration', 60))} минут
+🌍 <b>Часовой пояс:</b> {config.get('timezone_city', 'Не указано')} (UTC{int(config.get('timezone_offset_hours', 3)):+d})
+━━━━━━━━━━━━━━━━━━━━━━
+
+Выберите что изменить:
+"""
+
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⚙️ Открыть настройки", callback_data="admin_settings")],
+            [InlineKeyboardButton(text="✏️ Изменить название", callback_data="edit_business_name")],
+            [InlineKeyboardButton(text="🕐 Изменить время начала", callback_data="edit_work_start")],
+            [InlineKeyboardButton(text="🕑 Изменить время конца", callback_data="edit_work_end")],
+            [InlineKeyboardButton(text="⏱ Изменить слот", callback_data="edit_slot_duration")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_settings")],
         ])
-        await message.answer("⚙️ <b>Настройки бизнеса</b>", reply_markup=keyboard)
+
+        await message.answer(text, reply_markup=keyboard)
 
     async def reply_texts_handler(message: Message):
         """Тексты бота"""
@@ -1869,6 +1959,7 @@ async def main():
     dp.callback_query.register(admin_order_detail_handler, F.data.startswith("admin_order:"))
     dp.callback_query.register(admin_client_history_handler, F.data.startswith("admin_client_history:"))
     dp.callback_query.register(admin_export_csv_handler, F.data == "admin_export_csv")
+    dp.callback_query.register(admin_stats_period_handler, F.data.startswith("admin_stats_period:"))
     dp.callback_query.register(admin_clients_handler, F.data == "admin_clients")
     # admin_settings теперь обрабатывается в settings_editor.py
     dp.callback_query.register(admin_help_handler, F.data == "admin_help")

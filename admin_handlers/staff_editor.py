@@ -67,6 +67,7 @@ async def show_staff_menu(callback: CallbackQuery, config: dict, state: FSMConte
         [InlineKeyboardButton(text="✏️ Редактировать мастера", callback_data="edit_master_list")],
         [InlineKeyboardButton(text="📅 Закрытые даты", callback_data="closed_dates_menu")],
         [InlineKeyboardButton(text="🗑 Удалить мастера", callback_data="delete_master_list")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_settings")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)

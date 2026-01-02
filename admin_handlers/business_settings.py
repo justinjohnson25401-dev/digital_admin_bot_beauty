@@ -49,6 +49,7 @@ async def show_business_settings(callback: CallbackQuery, config: dict):
         [InlineKeyboardButton(text="🕐 Изменить время начала", callback_data="edit_work_start")],
         [InlineKeyboardButton(text="🕑 Изменить время конца", callback_data="edit_work_end")],
         [InlineKeyboardButton(text="⏱ Изменить слот", callback_data="edit_slot_duration")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_settings")],
     ])
 
     await callback.message.edit_text(text, reply_markup=keyboard)
