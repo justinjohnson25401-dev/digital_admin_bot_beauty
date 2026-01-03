@@ -2,7 +2,7 @@
 import sqlite3
 import logging
 from datetime import datetime
-from .privacy import safe_log_order_creation
+from utils.privacy import safe_log_order_creation
 
 logger = logging.getLogger(__name__)
 
