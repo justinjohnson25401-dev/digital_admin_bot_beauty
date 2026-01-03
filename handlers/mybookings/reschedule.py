@@ -12,7 +12,7 @@ from .keyboards import (
     get_edit_service_keyboard,
     format_time
 )
-from handlers.booking.keyboards import generate_dates_keyboard, generate_time_slots_keyboard
+from handlers.booking.keyboards import get_dates_keyboard, get_time_slots_keyboard
 from handlers.booking.calendar_utils import (
     generate_calendar_keyboard,
     handle_calendar_action
@@ -60,7 +60,7 @@ async def edit_booking_menu_handler(callback: CallbackQuery, state: FSMContext, 
 async def edit_datetime_start_handler(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Выберите новую дату:",
-        reply_markup=generate_dates_keyboard()
+        reply_markup=get_dates_keyboard()
     )
     await state.set_state(EditBookingState.choosing_date)
     await callback.answer()
@@ -74,7 +74,7 @@ async def edit_date_selected_handler(callback: CallbackQuery, state: FSMContext,
     data = await state.get_data()
     order_id = data.get('editing_order_id')
 
-    keyboard = generate_time_slots_keyboard(config, db_manager, booking_date, exclude_order_id=order_id)
+    keyboard = get_time_slots_keyboard(config, db_manager, booking_date, exclude_order_id=order_id)
     
     try:
         date_obj = datetime.fromisoformat(booking_date)
@@ -102,7 +102,7 @@ async def edit_calendar_action_handler(callback: CallbackQuery, state: FSMContex
     if callback.data == "date_closed":
         await callback.answer("❌ Эта дата недоступна", show_alert=True)
     elif callback.data == "cancel_calendar":
-        await callback.message.edit_text("Выберите новую дату:", reply_markup=generate_dates_keyboard(config=config))
+        await callback.message.edit_text("Выберите новую дату:", reply_markup=get_dates_keyboard(config=config))
         await callback.answer()
 
 # --- Обработка выбора времени и подтверждения ---
@@ -167,7 +167,7 @@ async def edit_service_start_handler(callback: CallbackQuery, state: FSMContext,
 
 @router.callback_query(EditBookingState.choosing_service, F.data.startswith("new_service:"))
 async def edit_service_selected_handler(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
-    service_id = callback.data.split(":")[1]
+    service_id = callback.data.split(":", 1)[1]
     selected_service = next((s for s in config.get('services', []) if s['id'] == service_id), None)
 
     if not selected_service:

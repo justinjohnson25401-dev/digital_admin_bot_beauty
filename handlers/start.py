@@ -275,13 +275,13 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
     data = await state.get_data()
 
     # Импортируем здесь, чтобы избежать циклических импортов
-    from handlers.booking import generate_dates_keyboard
+    from handlers.booking.keyboards import get_dates_keyboard
     from states.booking import BookingState
 
     # Если пользователь в календаре, выходим из него и возвращаемся к быстрым датам
     if data.get('using_calendar'):
         await state.update_data(using_calendar=False)
-        keyboard = generate_dates_keyboard(config=config, master_id=data.get('master_id'))
+        keyboard = get_dates_keyboard(config=config, master_id=data.get('master_id'))
         await message.answer("Выберите дату:", reply_markup=keyboard)
         await state.set_state(BookingState.choosing_date)
         return
@@ -320,7 +320,7 @@ async def cmd_back(message: Message, state: FSMContext, config: dict):
                 await show_services_list(message, state, config, services)
         elif current_state == BookingState.choosing_time:
             master_id = data.get('master_id')
-            keyboard = generate_dates_keyboard(config=config, master_id=master_id)
+            keyboard = get_dates_keyboard(config=config, master_id=master_id)
             await message.answer("Выберите дату:", reply_markup=keyboard)
             await state.set_state(BookingState.choosing_date)
         elif current_state in [BookingState.input_name, BookingState.input_phone, BookingState.input_comment]:
