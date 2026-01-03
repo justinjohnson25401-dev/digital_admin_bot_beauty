@@ -17,7 +17,6 @@ class DBManager(Database, UserQueries, BookingQueries, StaffQueries, StatsQuerie
     def init_db(self):
         super().init_db() # Вызов init_db из класса Database
         # После инициализации БД, пересоздаем экземпляры классов запросов с активным соединением
-        self.connection = super().connection
         UserQueries.__init__(self, self.connection)
         BookingQueries.__init__(self, self.connection)
         StaffQueries.__init__(self, self.connection)
