@@ -1,5 +1,70 @@
-# AI Bug Tracker
+# BUGS_TRACKER.md — Трекер Багов и Проблем
 
-| ID | Bug Description | Priority | Status | Date Found | Date Fixed | Session Notes |
-|:---|:---|:---|:---|:---|:---|:---|
-| 001 | **Race Condition in Booking Confirmation:** If two users try to book the same slot simultaneously, the first user succeeds, but the second user's session hangs or crashes because an unhandled `ValueError` is raised from the database layer. The user receives no feedback. | **Critical** | **Fixed** | 2024-05-21 | 2024-05-21 | The bug was fixed by implementing `try...except` error handling in `handlers/booking/confirmation.py` and adding a user-friendly error message. See Session 2024-05-21 in `CHANGELOG_AI.md`. |
+> Последнее обновление: **2026-01-03**
+> Аудит: **Claude Opus 4.5**
+
+---
+
+## КРИТИЧЕСКИЕ (P1) — ВСЕ ИСПРАВЛЕНЫ!
+
+| ID | Описание | Файл | Статус | Дата исправления |
+|:---|:---------|:-----|:-------|:-----------------|
+| P1-1 | **Отсутствует модуль start:** Убрал из импорта | `handlers/booking/__init__.py` | ✅ Fixed | 2026-01-03 |
+| P1-2 | **Неверный экспорт:** Добавлен алиас `all_booking_routers` | `handlers/booking/__init__.py` | ✅ Fixed | 2026-01-03 |
+| P1-3 | **Неверный импорт keyboards:** `..` → `.` | `handlers/booking/master.py` | ✅ Fixed | 2026-01-03 |
+| P1-4 | **Неверный импорт utils:** `..` → `.` | `handlers/booking/master.py` | ✅ Fixed | 2026-01-03 |
+| P1-5 | **Неверный импорт keyboards:** `..` → `.` | `handlers/booking/date.py` | ✅ Fixed | 2026-01-03 |
+| P1-6 | **Неверный импорт keyboards:** `..` → `.` | `handlers/booking/time.py` | ✅ Fixed | 2026-01-03 |
+| P1-7 | **SimpleCalendar не существует:** Заменено на DialogCalendar | `handlers/mybookings/reschedule.py` | ✅ Fixed | 2026-01-03 |
+
+---
+
+## ВЫСОКИЕ (P2) — Функциональность не работает
+
+| ID | Описание | Файл | Статус | Дата |
+|:---|:---------|:-----|:-------|:-----|
+| P2-1 | **DatabaseManager — заглушка:** Класс содержит только stub-методы, реальная логика не подключена | `utils/db/__init__.py` | 🟡 Open | 2026-01-03 |
+| P2-2 | **Дублирование mybookings:** Есть `handlers/mybookings.py` и `handlers/mybookings/` одновременно | `handlers/` | 🟡 Open | 2026-01-03 |
+
+---
+
+## СРЕДНИЕ (P3) — Требуют внимания
+
+| ID | Описание | Файл | Статус | Дата |
+|:---|:---------|:-----|:-------|:-----|
+| ~~P3-1~~ | ~~**Отсутствует импорт Message:**~~ | `handlers/booking/master.py` | ✅ Fixed | 2026-01-03 |
+
+---
+
+## ИСПРАВЛЕННЫЕ
+
+| ID | Описание | Файл | Дата исправления |
+|:---|:---------|:-----|:-----------------|
+| P1-1 — P1-7 | Все критические ошибки импортов | `handlers/booking/*`, `handlers/mybookings/*` | 2026-01-03 |
+| P3-1 | Добавлен импорт Message | `handlers/booking/master.py` | 2026-01-03 |
+| 001 | Race Condition в бронировании | `handlers/booking/confirmation.py` | 2024-05-21 |
+
+---
+
+## СТАТИСТИКА
+
+| Приоритет | Всего | Open | Fixed |
+|-----------|-------|------|-------|
+| P1 (Critical) | 7 | 0 | 7 |
+| P2 (High) | 2 | 2 | 0 |
+| P3 (Medium) | 1 | 0 | 1 |
+| **Итого** | **10** | **2** | **8** |
+
+---
+
+## ПРОВЕРКА РАБОТОСПОСОБНОСТИ
+
+```bash
+# Клиентский бот
+python3 -c "from handlers import all_routers; print('OK')"
+# Результат: OK ✅
+
+# Админ-бот
+python3 -c "from admin_bot.main import main; print('OK')"
+# Результат: OK ✅
+```

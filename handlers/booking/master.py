@@ -4,12 +4,12 @@
 
 import logging
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
 from states.booking import BookingState
-from ..keyboards import get_masters_keyboard # assuming keyboards are in handlers/booking/keyboards.py
-from ..utils import get_masters_for_service, get_master_by_id # assuming utils are in handlers/booking/utils.py
+from .keyboards import get_masters_keyboard
+from .utils import get_masters_for_service, get_master_by_id
 from .date import proceed_to_date_selection
 
 logger = logging.getLogger(__name__)

@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
 from states.booking import BookingState
-from ..keyboards import get_calendar_keyboard # assuming keyboards are in handlers/booking/keyboards.py
+from .keyboards import get_calendar_keyboard
 from .time import show_time_slots
 
 logger = logging.getLogger(__name__)
