@@ -69,13 +69,36 @@ async def edit_date_selected_handler(callback: CallbackQuery, callback_data: Dia
     selected, date = await DialogCalendar().process_selection(callback, callback_data)
 
     if selected:
+        from datetime import timedelta
+
         booking_date = date.strftime("%Y-%m-%d")
         await state.update_data(new_booking_date=booking_date)
         data = await state.get_data()
         order_id = data.get('editing_order_id')
 
-        keyboard = get_time_slots_keyboard(config, db_manager, booking_date, exclude_order_id=order_id)
-        
+        # Получаем занятые слоты
+        busy_slots = db_manager.get_busy_slots(booking_date)
+
+        # Генерируем все возможные слоты на основе конфига
+        work_hours_str = config.get('work_hours', {}).get(date.strftime('%A').lower(), "09:00-18:00")
+        start_work_str, end_work_str = work_hours_str.split('-')
+        start_work_time = datetime.strptime(start_work_str, '%H:%M').time()
+        end_work_time = datetime.strptime(end_work_str, '%H:%M').time()
+        interval_minutes = config.get('booking_settings', {}).get('time_slot_interval', 30)
+
+        all_slots = []
+        current_time = datetime.combine(date, start_work_time)
+        end_datetime = datetime.combine(date, end_work_time)
+
+        while current_time < end_datetime:
+            all_slots.append(current_time.strftime('%H:%M'))
+            current_time += timedelta(minutes=interval_minutes)
+
+        # Фильтруем занятые слоты
+        available_slots = [slot for slot in all_slots if slot not in busy_slots]
+
+        keyboard = get_time_slots_keyboard(available_slots)
+
         date_formatted = date.strftime('%d.%m.%Y')
 
         await callback.message.edit_text(

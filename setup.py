@@ -170,8 +170,8 @@ def create_config(config, business_name, admin_id, slug):
     config['business_slug'] = slug
     config['admin_ids'] = [admin_id]
 
-    os.makedirs('configs', exist_ok=True)
-    config_path = 'configs/client_lite.json'
+    os.makedirs('config', exist_ok=True)
+    config_path = 'config/client_lite.json'
 
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
@@ -223,20 +223,21 @@ def print_success():
     print("""
 📋 Что дальше:
 
-1. Запустите клиентского бота:
-   python main.py
+🚀 БЫСТРЫЙ ЗАПУСК (оба бота одной командой):
+   python run.py
 
-2. В отдельном терминале запустите админ-панель:
-   python admin_bot/main.py
+   Или по отдельности:
+   • python main.py           - клиентский бот
+   • python admin_bot/main.py - админ-панель
 
-3. Откройте вашего бота в Telegram и нажмите /start
+2. Откройте вашего бота в Telegram и нажмите /start
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 💡 Советы:
-   • Настройки меняйте в configs/client_lite.json
+   • Настройки меняйте в config/client_lite.json
    • Админ-панель доступна только владельцу (admin_ids)
-   • Для фонового запуска: nohup python main.py &
+   • Ctrl+C в run.py остановит оба бота сразу
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
