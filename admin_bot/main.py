@@ -6,7 +6,9 @@ BOT-BUSINESS V2.0 - Админ-панель
 
 import argparse
 import asyncio
+import json
 import logging
+import logging.handlers
 import os
 import sys
 
@@ -22,8 +24,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from utils.db import DatabaseManager
-from utils.config_loader import load_config  # ИСПРАВЛЕННЫЙ ИМПОРТ
-from utils.logger import setup_logger
+from utils.config_editor import ConfigEditor
 
 from admin_bot.middleware import (
     AdminAuthMiddleware,
@@ -32,6 +33,7 @@ from admin_bot.middleware import (
     PinMiddlewareInjector,
 )
 from admin_bot.handlers import setup_handlers
+from utils.logger import setup_logger
 
 # Импортируем admin handlers (роутеры)
 from admin_handlers import (
@@ -40,26 +42,32 @@ from admin_handlers import (
     business_settings,
     texts_editor,
     notifications_editor,
-    staff_editor,
     promotions_editor,
 )
+from admin_handlers.staff import router as staff_router
+
+def load_config(config_path: str) -> dict:
+    """Загрузка конфигурации"""
+    with open(config_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
 
 async def main():
     """Главная функция админ-бота"""
     parser = argparse.ArgumentParser(description='Admin Bot for Bot-Business V2.0')
-    # Аргумент изменен на --config-dir для единообразия с main.py
-    parser.add_argument('--config-dir', type=str, default='config', help='Path to config directory')
+    parser.add_argument('--config', type=str, required=True, help='Path to config JSON')
     args = parser.parse_args()
+
+    # Настройка логгера
+    setup_logger()
+    logger = logging.getLogger(__name__)
 
     # Загрузка конфигурации
     try:
-        config = load_config(args.config_dir)
-        # Инициализация логгера после загрузки конфига
-        logger = setup_logger(config['business_slug'], 'admin_bot')
+        config = load_config(args.config)
         logger.info(f"✅ Config loaded: {config.get('business_name')}")
     except Exception as e:
-        logging.critical(f"❌ Failed to load config from '{args.config_dir}': {e}", exc_info=True)
+        logging.error(f"❌ Failed to load config: {e}")
         return
 
     # Токен админ-бота
@@ -76,18 +84,21 @@ async def main():
         logger.error(f"❌ Database error: {e}")
         return
 
+    # Инициализация ConfigEditor
+    config_editor = ConfigEditor(args.config)
+    logger.info("✅ ConfigEditor initialized")
+
     # Создаём бота и диспетчер
     bot = Bot(token=admin_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 
     # Подключаем middlewares
-    # УДАЛЕНО: config_manager больше не используется
-    dp.update.middleware(ConfigMiddleware(config, db_manager))
     dp.update.middleware(AdminAuthMiddleware(config))
     pin_middleware = AdminPinMiddleware(config)
     dp.update.middleware(pin_middleware)
     dp.update.middleware(PinMiddlewareInjector(pin_middleware))
+    dp.update.middleware(ConfigMiddleware(config, db_manager, config_editor))
 
     # Регистрируем handlers из модулей
     setup_handlers(dp, pin_middleware)
@@ -98,7 +109,7 @@ async def main():
     dp.include_router(business_settings.router)
     dp.include_router(texts_editor.router)
     dp.include_router(notifications_editor.router)
-    dp.include_router(staff_editor.router)
+    dp.include_router(staff_router)
     dp.include_router(promotions_editor.router)
 
     logger.info(f"🚀 Admin Bot for '{config.get('business_name')}' started!")

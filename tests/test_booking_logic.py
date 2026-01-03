@@ -1,6 +1,6 @@
 import pytest
 from datetime import date, datetime, timedelta
-from handlers.booking import (
+from handlers.booking.utils import (
     is_date_closed_for_master,
     get_master_by_id,
     get_masters_for_service

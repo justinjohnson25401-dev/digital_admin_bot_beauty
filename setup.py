@@ -205,9 +205,8 @@ def init_database(slug):
     print_step(6, "Инициализация базы данных")
 
     try:
-        from utils.db import DBManager  # Теперь этот импорт сработает
-        db = DBManager(slug)
-        db.init_db()
+        from utils.db import DatabaseManager  # Теперь этот импорт сработает
+        db = DatabaseManager(slug)
         db.close()
         print(f"✅ База данных создана: db_{slug}.sqlite")
     except Exception as e:
