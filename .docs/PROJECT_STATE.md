@@ -1,8 +1,137 @@
-# Project State
+# PROJECT_STATE.md — Текущее Состояние Проекта
 
-| File Path | Status | Last Modified (Session) | Notes |
+> Последнее обновление: **2026-01-03 16:50 UTC**
+> Аудит выполнен: **Claude Opus 4.5**
+
+---
+
+## ОБЩИЙ ВЕРДИКТ
+
+# 🔴 ПРОЕКТ СЛОМАН (Клиентский бот не запустится)
+
+| Компонент | Статус | Можно запустить? |
+|-----------|--------|------------------|
+| **Клиентский бот** (`main.py`) | 🔴 КРИТИЧНО | ❌ НЕТ |
+| **Админ-бот** (`admin_bot/main.py`) | 🟢 ОК | ✅ ДА |
+| **База данных** | 🟢 ОК | ✅ ДА |
+| **Конфигурация** | 🟢 ОК | ✅ ДА |
+
+---
+
+## КРАСНЫЕ ЗОНЫ (Критические проблемы)
+
+### 1. Отсутствует файл `handlers/booking/start.py`
+
+**Где:** `handlers/booking/__init__.py:7`
+**Что:** `from . import start, master, date, time, contact, confirmation, save`
+**Проблема:** Файл `start.py` не существует в папке `handlers/booking/`
+**Последствие:** ImportError при запуске
+
+---
+
+### 2. Неверный экспорт `all_booking_routers`
+
+**Где:** `handlers/__init__.py:10`
+**Что:** `from .booking import all_booking_routers`
+**Проблема:** В `handlers/booking/__init__.py` экспортируется `booking_router` и `router`, но НЕ `all_booking_routers`
+**Последствие:** ImportError при запуске
+
+---
+
+### 3. Неверные относительные импорты в модуле booking
+
+| Файл | Строка | Неверный импорт | Правильный импорт |
+|------|--------|-----------------|-------------------|
+| `handlers/booking/master.py` | 11 | `from ..keyboards` | `from .keyboards` |
+| `handlers/booking/master.py` | 12 | `from ..utils` | `from .utils` |
+| `handlers/booking/date.py` | 12 | `from ..keyboards` | `from .keyboards` |
+| `handlers/booking/time.py` | 12 | `from ..keyboards` | `from .keyboards` |
+
+**Объяснение:** `..` означает "папка уровнем выше" (handlers/), но keyboards.py и utils.py находятся В ТОЙ ЖЕ папке (handlers/booking/), поэтому нужен `.`
+
+---
+
+## ЖЁЛТЫЕ ЗОНЫ (Требуют внимания)
+
+### 1. DatabaseManager в `utils/db/__init__.py` — заглушка
+
+Класс `DatabaseManager` в `utils/db/__init__.py` содержит только заглушки (stubs), которые возвращают фиктивные данные. Реальная логика находится в других файлах (`database.py`, `booking_queries.py`), но не интегрирована в `DatabaseManager`.
+
+**Риск:** При реальной работе данные не будут сохраняться
+
+### 2. Дублирование файла mybookings
+
+Есть два файла:
+- `handlers/mybookings.py` (устаревший?)
+- `handlers/mybookings/__init__.py` (новый модуль)
+
+**Рекомендация:** Удалить один из них или объединить
+
+---
+
+## ЗЕЛЁНЫЕ ЗОНЫ (Работают корректно)
+
+| Модуль | Статус | Комментарий |
+|--------|--------|-------------|
+| `admin_bot/` | 🟢 OK | Импортируется и запускается |
+| `admin_bot/middleware/` | 🟢 OK | Авторизация работает |
+| `admin_bot/handlers/` | 🟢 OK | Все handlers найдены |
+| `admin_handlers/` | 🟢 OK | Редакторы настроек работают |
+| `utils/db/database.py` | 🟢 OK | Миграции схемы работают |
+| `utils/db/booking_queries.py` | 🟢 OK | SQL-запросы корректны |
+| `utils/config_loader.py` | 🟢 OK | Загрузка конфигов работает |
+| `utils/config_editor.py` | 🟢 OK | Редактирование конфигов работает |
+| `utils/privacy.py` | 🟢 OK | Маскирование данных работает |
+| `states/` | 🟢 OK | FSM-состояния определены |
+
+---
+
+## СРОЧНЫЕ ФИКСЫ (в порядке приоритета)
+
+| # | Действие | Файл | Сложность |
+|---|----------|------|-----------|
+| 1 | Исправить экспорт `all_booking_routers` | `handlers/booking/__init__.py` | Легко |
+| 2 | Исправить импорт в `handlers/__init__.py` | `handlers/__init__.py` | Легко |
+| 3 | Исправить `from ..keyboards` → `from .keyboards` | `handlers/booking/master.py` | Легко |
+| 4 | Исправить `from ..utils` → `from .utils` | `handlers/booking/master.py` | Легко |
+| 5 | Исправить `from ..keyboards` → `from .keyboards` | `handlers/booking/date.py` | Легко |
+| 6 | Исправить `from ..keyboards` → `from .keyboards` | `handlers/booking/time.py` | Легко |
+| 7 | Убрать импорт несуществующего `start` | `handlers/booking/__init__.py` | Легко |
+
+---
+
+## ИСТОРИЯ СОСТОЯНИЙ
+
+| Дата | Статус | Что изменилось |
+|------|--------|----------------|
+| 2026-01-03 | 🔴 СЛОМАН | Аудит выявил 5 критических ошибок импортов |
+| 2024-05-21 | 🟡 РАБОТАЛ | Исправлен race condition в бронировании |
+
+---
+
+## ПРЕДЫДУЩИЕ ИЗМЕНЕНИЯ (из старой версии)
+
+| File Path | Status | Last Modified | Notes |
 |:---|:---|:---|:---|
-| `handlers/booking/confirmation.py` | **Verified & Patched** | 2024-05-21 | Added `try-except` block to handle race conditions and other errors. Improved user feedback. |
-| `templates/beauty_salon.json` | **Verified & Modified** | 2024-05-21 | Updated the `slot_taken` error message for better clarity. |
-| `utils/db/booking_queries.py` | **Verified** | 2024-05-21 | Code reviewed. Confirmed that the database layer correctly uses transactions to prevent double booking and raises a `ValueError`. No changes were needed. |
-| `handlers/start.py` | **Rolled Back** | 2024-05-21 | Initial changes were reverted as they were not aligned with the user's immediate priority. |
+| `handlers/booking/confirmation.py` | **Verified & Patched** | 2024-05-21 | Added `try-except` for race conditions |
+| `templates/beauty_salon.json` | **Verified & Modified** | 2024-05-21 | Updated `slot_taken` message |
+| `utils/db/booking_queries.py` | **Verified** | 2024-05-21 | Transactions work correctly |
+| `handlers/start.py` | **Rolled Back** | 2024-05-21 | Changes reverted |
+
+---
+
+## КОНТРОЛЬНЫЙ СПИСОК ЗАПУСКА
+
+Перед запуском клиентского бота проверь:
+
+- [ ] Все импорты в `handlers/booking/` исправлены
+- [ ] `handlers/booking/__init__.py` экспортирует правильный роутер
+- [ ] `python3 -c "from handlers import all_routers"` — без ошибок
+- [ ] `.env` файл содержит `BOT_TOKEN`
+- [ ] Папка `config/` содержит JSON-файлы
+
+Для админ-бота:
+
+- [x] Импорты работают
+- [ ] `.env` файл содержит `ADMIN_BOT_TOKEN`
+- [ ] Конфиг содержит `admin_ids` и `admin_pin_hash`
