@@ -1,6 +1,145 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.filters.callback_data import CallbackData
 from datetime import datetime, timedelta
 import calendar
+from typing import Optional, Tuple
+
+
+class DialogCalendarCallback(CallbackData, prefix="dialog_cal"):
+    """Callback data для DialogCalendar"""
+    act: str  # action: prev, next, day, ignore
+    year: int
+    month: int
+    day: int
+
+
+class DialogCalendar:
+    """Простой диалоговый календарь для выбора даты."""
+
+    MONTHS_RU = {
+        1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель',
+        5: 'Май', 6: 'Июнь', 7: 'Июль', 8: 'Август',
+        9: 'Сентябрь', 10: 'Октябрь', 11: 'Ноябрь', 12: 'Декабрь'
+    }
+
+    async def start_calendar(
+        self,
+        year: int = None,
+        month: int = None
+    ) -> InlineKeyboardMarkup:
+        """Создаёт клавиатуру календаря."""
+        now = datetime.now()
+        year = year or now.year
+        month = month or now.month
+
+        return self._build_calendar(year, month)
+
+    def _build_calendar(self, year: int, month: int) -> InlineKeyboardMarkup:
+        """Строит календарь для указанного месяца."""
+        buttons = []
+
+        # Заголовок с месяцем и годом
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{self.MONTHS_RU[month]} {year}",
+                callback_data=DialogCalendarCallback(act="ignore", year=year, month=month, day=0).pack()
+            )
+        ])
+
+        # Дни недели
+        week_days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+        buttons.append([
+            InlineKeyboardButton(
+                text=day,
+                callback_data=DialogCalendarCallback(act="ignore", year=year, month=month, day=0).pack()
+            ) for day in week_days
+        ])
+
+        # Календарь месяца
+        cal = calendar.monthcalendar(year, month)
+        for week in cal:
+            row = []
+            for day in week:
+                if day == 0:
+                    row.append(InlineKeyboardButton(
+                        text=" ",
+                        callback_data=DialogCalendarCallback(act="ignore", year=year, month=month, day=0).pack()
+                    ))
+                else:
+                    row.append(InlineKeyboardButton(
+                        text=str(day),
+                        callback_data=DialogCalendarCallback(act="day", year=year, month=month, day=day).pack()
+                    ))
+            buttons.append(row)
+
+        # Навигация
+        nav_row = [
+            InlineKeyboardButton(
+                text="◀️",
+                callback_data=DialogCalendarCallback(act="prev", year=year, month=month, day=0).pack()
+            ),
+            InlineKeyboardButton(
+                text="❌",
+                callback_data=DialogCalendarCallback(act="cancel", year=year, month=month, day=0).pack()
+            ),
+            InlineKeyboardButton(
+                text="▶️",
+                callback_data=DialogCalendarCallback(act="next", year=year, month=month, day=0).pack()
+            )
+        ]
+        buttons.append(nav_row)
+
+        return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    async def process_selection(
+        self,
+        callback: CallbackQuery,
+        callback_data: DialogCalendarCallback
+    ) -> Tuple[bool, Optional[datetime]]:
+        """
+        Обрабатывает выбор в календаре.
+        Возвращает (selected, date) - был ли выбран день и дату.
+        """
+        act = callback_data.act
+        year = callback_data.year
+        month = callback_data.month
+        day = callback_data.day
+
+        if act == "ignore":
+            await callback.answer()
+            return False, None
+
+        if act == "cancel":
+            await callback.message.delete()
+            return False, None
+
+        if act == "prev":
+            month -= 1
+            if month < 1:
+                month = 12
+                year -= 1
+            keyboard = self._build_calendar(year, month)
+            await callback.message.edit_reply_markup(reply_markup=keyboard)
+            await callback.answer()
+            return False, None
+
+        if act == "next":
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+            keyboard = self._build_calendar(year, month)
+            await callback.message.edit_reply_markup(reply_markup=keyboard)
+            await callback.answer()
+            return False, None
+
+        if act == "day":
+            selected_date = datetime(year, month, day).date()
+            await callback.answer()
+            return True, selected_date
+
+        return False, None
+
 
 # Константы для локализации
 MONTHS_RU = {
@@ -58,7 +197,7 @@ def generate_calendar_keyboard(
     
     # Импорт функции проверки закрытых дат (только для режима booking)
     if mode == "booking":
-        from handlers.booking import is_date_closed_for_master
+        from handlers.booking.utils import is_date_closed_for_master
     
     # Строки с датами
     for week in cal:

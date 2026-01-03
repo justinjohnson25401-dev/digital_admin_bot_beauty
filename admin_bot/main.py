@@ -24,7 +24,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from utils.db import DatabaseManager
-from utils.config_manager import ConfigManager
+from utils.config_editor import ConfigEditor
 
 from admin_bot.middleware import (
     AdminAuthMiddleware,
@@ -42,9 +42,9 @@ from admin_handlers import (
     business_settings,
     texts_editor,
     notifications_editor,
-    staff_editor,
     promotions_editor,
 )
+from admin_handlers.staff import router as staff_router
 
 def load_config(config_path: str) -> dict:
     """Загрузка конфигурации"""
@@ -58,10 +58,13 @@ async def main():
     parser.add_argument('--config', type=str, required=True, help='Path to config JSON')
     args = parser.parse_args()
 
+    # Настройка логгера
+    setup_logger()
+    logger = logging.getLogger(__name__)
+
     # Загрузка конфигурации
     try:
         config = load_config(args.config)
-        logger = setup_logger(config['business_slug'], 'admin_bot')
         logger.info(f"✅ Config loaded: {config.get('business_name')}")
     except Exception as e:
         logging.error(f"❌ Failed to load config: {e}")
@@ -81,9 +84,9 @@ async def main():
         logger.error(f"❌ Database error: {e}")
         return
 
-    # Инициализация ConfigManager
-    config_manager = ConfigManager(args.config)
-    logger.info("✅ ConfigManager initialized")
+    # Инициализация ConfigEditor
+    config_editor = ConfigEditor(args.config)
+    logger.info("✅ ConfigEditor initialized")
 
     # Создаём бота и диспетчер
     bot = Bot(token=admin_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -95,7 +98,7 @@ async def main():
     pin_middleware = AdminPinMiddleware(config)
     dp.update.middleware(pin_middleware)
     dp.update.middleware(PinMiddlewareInjector(pin_middleware))
-    dp.update.middleware(ConfigMiddleware(config, db_manager, config_manager))
+    dp.update.middleware(ConfigMiddleware(config, db_manager, config_editor))
 
     # Регистрируем handlers из модулей
     setup_handlers(dp, pin_middleware)
@@ -106,7 +109,7 @@ async def main():
     dp.include_router(business_settings.router)
     dp.include_router(texts_editor.router)
     dp.include_router(notifications_editor.router)
-    dp.include_router(staff_editor.router)
+    dp.include_router(staff_router)
     dp.include_router(promotions_editor.router)
 
     logger.info(f"🚀 Admin Bot for '{config.get('business_name')}' started!")
