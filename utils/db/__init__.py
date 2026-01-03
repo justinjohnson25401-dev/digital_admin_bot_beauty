@@ -53,4 +53,3 @@ class DatabaseManager:
         self.stats = StatsQueries(self.db.connection)
         self.staff = StaffQueries(self.db.connection)
         logger.info("Database connection reinitialized.")
-продо
