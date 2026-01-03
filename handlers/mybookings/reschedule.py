@@ -13,7 +13,7 @@ from .keyboards import (
     format_time
 )
 from handlers.booking.keyboards import get_dates_keyboard, get_time_slots_keyboard
-from handlers.booking.calendar_utils import (
+from utils.calendar import (
     generate_calendar_keyboard,
     handle_calendar_action
 )
