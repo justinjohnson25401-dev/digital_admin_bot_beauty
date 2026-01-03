@@ -3,13 +3,13 @@
 """
 
 import logging
-from datetime import datetime, time, date
+from datetime import datetime, time, date, timedelta
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 
 from states.booking import BookingState
-from ..keyboards import get_time_slots_keyboard
+from .keyboards import get_time_slots_keyboard
 from .contact import request_contact_info
 
 logger = logging.getLogger(__name__)

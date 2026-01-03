@@ -13,7 +13,7 @@ from .keyboards import (
     format_time
 )
 from handlers.booking.keyboards import get_time_slots_keyboard
-from utils.calendar import SimpleCalendar, SimpleCalendarCallback
+from utils.calendar import DialogCalendar, DialogCalendarCallback
 from utils.notify import send_order_change_to_admins
 
 logger = logging.getLogger(__name__)
@@ -57,16 +57,16 @@ async def edit_booking_menu_handler(callback: CallbackQuery, state: FSMContext, 
 async def edit_datetime_start_handler(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Выберите новую дату:",
-        reply_markup=await SimpleCalendar().start_calendar()
+        reply_markup=await DialogCalendar().start_calendar()
     )
     await state.set_state(EditBookingState.choosing_date)
     await callback.answer()
 
 
-@router.callback_query(EditBookingState.choosing_date, SimpleCalendarCallback.filter())
-async def edit_date_selected_handler(callback: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext, config: dict, db_manager):
+@router.callback_query(EditBookingState.choosing_date, DialogCalendarCallback.filter())
+async def edit_date_selected_handler(callback: CallbackQuery, callback_data: DialogCalendarCallback, state: FSMContext, config: dict, db_manager):
     """Обработка выбора даты из календаря"""
-    selected, date = await SimpleCalendar().process_selection(callback, callback_data)
+    selected, date = await DialogCalendar().process_selection(callback, callback_data)
 
     if selected:
         booking_date = date.strftime("%Y-%m-%d")

@@ -5,16 +5,17 @@
 
 ---
 
-## КРИТИЧЕСКИЕ (P1) — Бот не запустится
+## КРИТИЧЕСКИЕ (P1) — ВСЕ ИСПРАВЛЕНЫ!
 
-| ID | Описание | Файл | Статус | Дата |
-|:---|:---------|:-----|:-------|:-----|
-| P1-1 | **Отсутствует модуль start:** `handlers/booking/__init__.py` импортирует несуществующий `start` модуль | `handlers/booking/__init__.py:7` | 🔴 Open | 2026-01-03 |
-| P1-2 | **Неверный экспорт:** Импортируется `all_booking_routers`, но экспортируется `booking_router` | `handlers/__init__.py:10` | 🔴 Open | 2026-01-03 |
-| P1-3 | **Неверный импорт keyboards:** Используется `..keyboards` вместо `.keyboards` | `handlers/booking/master.py:11` | 🔴 Open | 2026-01-03 |
-| P1-4 | **Неверный импорт utils:** Используется `..utils` вместо `.utils` | `handlers/booking/master.py:12` | 🔴 Open | 2026-01-03 |
-| P1-5 | **Неверный импорт keyboards:** Используется `..keyboards` вместо `.keyboards` | `handlers/booking/date.py:12` | 🔴 Open | 2026-01-03 |
-| P1-6 | **Неверный импорт keyboards:** Используется `..keyboards` вместо `.keyboards` | `handlers/booking/time.py:12` | 🔴 Open | 2026-01-03 |
+| ID | Описание | Файл | Статус | Дата исправления |
+|:---|:---------|:-----|:-------|:-----------------|
+| P1-1 | **Отсутствует модуль start:** Убрал из импорта | `handlers/booking/__init__.py` | ✅ Fixed | 2026-01-03 |
+| P1-2 | **Неверный экспорт:** Добавлен алиас `all_booking_routers` | `handlers/booking/__init__.py` | ✅ Fixed | 2026-01-03 |
+| P1-3 | **Неверный импорт keyboards:** `..` → `.` | `handlers/booking/master.py` | ✅ Fixed | 2026-01-03 |
+| P1-4 | **Неверный импорт utils:** `..` → `.` | `handlers/booking/master.py` | ✅ Fixed | 2026-01-03 |
+| P1-5 | **Неверный импорт keyboards:** `..` → `.` | `handlers/booking/date.py` | ✅ Fixed | 2026-01-03 |
+| P1-6 | **Неверный импорт keyboards:** `..` → `.` | `handlers/booking/time.py` | ✅ Fixed | 2026-01-03 |
+| P1-7 | **SimpleCalendar не существует:** Заменено на DialogCalendar | `handlers/mybookings/reschedule.py` | ✅ Fixed | 2026-01-03 |
 
 ---
 
@@ -31,86 +32,17 @@
 
 | ID | Описание | Файл | Статус | Дата |
 |:---|:---------|:-----|:-------|:-----|
-| P3-1 | **Отсутствует импорт Message:** В `master.py` используется `Message` без импорта | `handlers/booking/master.py:24` | 🟡 Open | 2026-01-03 |
+| ~~P3-1~~ | ~~**Отсутствует импорт Message:**~~ | `handlers/booking/master.py` | ✅ Fixed | 2026-01-03 |
 
 ---
 
 ## ИСПРАВЛЕННЫЕ
 
-| ID | Описание | Файл | Статус | Дата найдена | Дата исправления |
-|:---|:---------|:-----|:-------|:-------------|:-----------------|
-| 001 | **Race Condition в бронировании:** Два пользователя бронируют один слот → второй получает ошибку без обратной связи | `handlers/booking/confirmation.py` | ✅ Fixed | 2024-05-21 | 2024-05-21 |
-
----
-
-## КАК ИСПРАВИТЬ КРИТИЧЕСКИЕ БАГИ
-
-### P1-1: Отсутствует модуль start
-
-**Вариант A:** Убрать `start` из импорта в `handlers/booking/__init__.py`
-```python
-# Было:
-from . import start, master, date, time, contact, confirmation, save
-
-# Стало:
-from . import master, date, time, contact, confirmation, save
-```
-
-**Вариант B:** Создать файл `handlers/booking/start.py` с нужным роутером
-
----
-
-### P1-2: Неверный экспорт
-
-**Исправить в `handlers/booking/__init__.py`:**
-```python
-# Добавить алиас для совместимости:
-all_booking_routers = booking_router
-```
-
-**Или исправить в `handlers/__init__.py`:**
-```python
-# Было:
-from .booking import all_booking_routers
-
-# Стало:
-from .booking import booking_router as all_booking_routers
-```
-
----
-
-### P1-3 — P1-6: Неверные относительные импорты
-
-**Исправить `..` на `.` в указанных файлах:**
-
-```python
-# handlers/booking/master.py
-# Было:
-from ..keyboards import get_masters_keyboard
-from ..utils import get_masters_for_service, get_master_by_id
-
-# Стало:
-from .keyboards import get_masters_keyboard
-from .utils import get_masters_for_service, get_master_by_id
-```
-
-```python
-# handlers/booking/date.py
-# Было:
-from ..keyboards import get_calendar_keyboard
-
-# Стало:
-from .keyboards import get_calendar_keyboard
-```
-
-```python
-# handlers/booking/time.py
-# Было:
-from ..keyboards import get_time_slots_keyboard
-
-# Стало:
-from .keyboards import get_time_slots_keyboard
-```
+| ID | Описание | Файл | Дата исправления |
+|:---|:---------|:-----|:-----------------|
+| P1-1 — P1-7 | Все критические ошибки импортов | `handlers/booking/*`, `handlers/mybookings/*` | 2026-01-03 |
+| P3-1 | Добавлен импорт Message | `handlers/booking/master.py` | 2026-01-03 |
+| 001 | Race Condition в бронировании | `handlers/booking/confirmation.py` | 2024-05-21 |
 
 ---
 
@@ -118,7 +50,21 @@ from .keyboards import get_time_slots_keyboard
 
 | Приоритет | Всего | Open | Fixed |
 |-----------|-------|------|-------|
-| P1 (Critical) | 6 | 6 | 0 |
+| P1 (Critical) | 7 | 0 | 7 |
 | P2 (High) | 2 | 2 | 0 |
-| P3 (Medium) | 1 | 1 | 0 |
-| **Итого** | **9** | **9** | **0** |
+| P3 (Medium) | 1 | 0 | 1 |
+| **Итого** | **10** | **2** | **8** |
+
+---
+
+## ПРОВЕРКА РАБОТОСПОСОБНОСТИ
+
+```bash
+# Клиентский бот
+python3 -c "from handlers import all_routers; print('OK')"
+# Результат: OK ✅
+
+# Админ-бот
+python3 -c "from admin_bot.main import main; print('OK')"
+# Результат: OK ✅
+```
