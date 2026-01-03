@@ -14,8 +14,7 @@ from .keyboards import (
 )
 from handlers.booking.keyboards import get_dates_keyboard, get_time_slots_keyboard
 from utils.calendar import (
-    generate_calendar_keyboard,
-    handle_calendar_action
+    generate_calendar_keyboard
 )
 from utils.notify import send_order_change_to_admins
 
@@ -94,7 +93,8 @@ async def edit_date_selected_handler(callback: CallbackQuery, state: FSMContext,
 
 @router.callback_query(EditBookingState.choosing_date, F.data.in_(["open_calendar", "cal_prev_month", "cal_next_month"]))
 async def edit_calendar_handler(callback: CallbackQuery, state: FSMContext, config: dict):
-    await handle_calendar_action(callback, state, config, "booking")
+    # await handle_calendar_action(callback, state, config, "booking")
+    pass # Временная заглушка
 
 
 @router.callback_query(EditBookingState.choosing_date, F.data.in_(["date_closed", "cancel_calendar"]))
