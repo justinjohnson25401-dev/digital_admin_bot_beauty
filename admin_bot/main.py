@@ -23,7 +23,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from utils.db_manager import DBManager
+from utils.db import DatabaseManager
 from utils.config_manager import ConfigManager
 
 from admin_bot.middleware import (
@@ -33,6 +33,7 @@ from admin_bot.middleware import (
     PinMiddlewareInjector,
 )
 from admin_bot.handlers import setup_handlers
+from utils.logger import setup_logger
 
 # Импортируем admin handlers (роутеры)
 from admin_handlers import (
@@ -44,25 +45,6 @@ from admin_handlers import (
     staff_editor,
     promotions_editor,
 )
-
-# Настройка логирования
-os.makedirs('logs', exist_ok=True)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.handlers.RotatingFileHandler(
-            'logs/admin_bot.log',
-            maxBytes=10*1024*1024,
-            backupCount=5,
-            encoding='utf-8'
-        )
-    ]
-)
-logger = logging.getLogger(__name__)
-
 
 def load_config(config_path: str) -> dict:
     """Загрузка конфигурации"""
@@ -79,9 +61,10 @@ async def main():
     # Загрузка конфигурации
     try:
         config = load_config(args.config)
+        logger = setup_logger(config['business_slug'], 'admin_bot')
         logger.info(f"✅ Config loaded: {config.get('business_name')}")
     except Exception as e:
-        logger.error(f"❌ Failed to load config: {e}")
+        logging.error(f"❌ Failed to load config: {e}")
         return
 
     # Токен админ-бота
@@ -91,9 +74,8 @@ async def main():
         return
 
     # Инициализация БД
-    db_manager = DBManager(config['business_slug'])
+    db_manager = DatabaseManager(config['business_slug'])
     try:
-        db_manager.init_db()
         logger.info(f"✅ Database ready: db_{config['business_slug']}.sqlite")
     except Exception as e:
         logger.error(f"❌ Database error: {e}")

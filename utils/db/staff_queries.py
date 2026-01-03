@@ -2,11 +2,14 @@
 import sqlite3
 import logging
 
+from utils.db.booking_queries import BookingQueries
+
 logger = logging.getLogger(__name__)
 
-class StaffQueries:
+class StaffQueries(BookingQueries):
 
     def __init__(self, db_connection):
+        super().__init__(db_connection)
         self.connection = db_connection
 
     def _ensure_connection(self):

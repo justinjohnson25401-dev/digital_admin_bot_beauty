@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 import aiohttp
 
+from utils.db import DatabaseManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -190,7 +192,7 @@ class MetricsCollector:
     Сборщик метрик для аналитики
     """
 
-    def __init__(self, db_manager):
+    def __init__(self, db_manager: DatabaseManager):
         """
         Args:
             db_manager: Экземпляр DatabaseManager

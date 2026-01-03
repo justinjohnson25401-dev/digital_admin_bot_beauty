@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.storage.memory import MemoryStorage  # ИЗМЕНЕНО
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import TelegramObject, Message
 from typing import Any, Awaitable, Callable, Dict
 
@@ -15,7 +15,7 @@ from typing import Any, Awaitable, Callable, Dict
 load_dotenv()
 
 # Импорты из проекта
-from utils.db import DBManager
+from utils.db import DatabaseManager
 from utils.logger import setup_logger
 from utils.config_loader import load_config
 
@@ -119,10 +119,9 @@ async def main():
         return
 
     business_slug = config.get('business_slug', 'default_business')
-    db_manager = DBManager(business_slug)
+    db_manager = DatabaseManager(business_slug)
     
     try:
-        db_manager.init_db()
         logger.info(f"✅ База данных инициализирована: db_{business_slug}.sqlite")
     except Exception as e:
         logger.critical(f"❌ Ошибка инициализации БД: {e}", exc_info=True)
@@ -144,7 +143,7 @@ async def main():
     else:
         logger.warning("⚠️ ADMIN_BOT_TOKEN не найден - уведомления будут через клиентского бота")
 
-    storage = MemoryStorage()  # ИЗМЕНЕНО
+    storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 
     dp.update.middleware(ConfigMiddleware(config, db_manager, admin_bot))
@@ -176,7 +175,7 @@ async def main():
     logger.info(f"🚀 Бот '{config.get('business_name', 'Неизвестно')}' запущен!")
     logger.info(f"📂 Конфигурация из директории: {args.config_dir}")
     logger.info(f"💾 База данных: db_{business_slug}.sqlite")
-    logger.info("💾 Хранилище FSM: MemoryStorage") # ИЗМЕНЕНО
+    logger.info("💾 Хранилище FSM: MemoryStorage")
 
     try:
         await bot.delete_webhook(drop_pending_updates=True)

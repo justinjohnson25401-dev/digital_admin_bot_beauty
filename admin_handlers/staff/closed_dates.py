@@ -7,7 +7,7 @@ from datetime import datetime, date
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
-from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback
+from utils.calendar import DialogCalendar, DialogCalendarCallback
 
 from admin_bot.states import StaffEditorStates
 from utils.config_editor import ConfigEditor
@@ -87,24 +87,24 @@ async def add_closed_date_start(callback: CallbackQuery, state: FSMContext):
     await state.update_data(current_master_id=master_id)
     await state.set_state(StaffEditorStates.add_closed_date_cal)
 
-    keyboard = await SimpleCalendar().start_calendar()
+    keyboard = await DialogCalendar().start_calendar()
 
     await callback.message.edit_text("🗓 Выберите дату:", reply_markup=keyboard)
     await callback.answer()
 
 
-@router.callback_query(SimpleCalendarCallback.filter(), StaffEditorStates.add_closed_date_cal)
-async def process_add_closed_date(callback: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext):
+@router.callback_query(DialogCalendarCallback.filter(), StaffEditorStates.add_closed_date_cal)
+async def process_add_closed_date(callback: CallbackQuery, callback_data: DialogCalendarCallback, state: FSMContext):
     """Обработка выбора даты в календаре и запрос причины"""
 
-    selected, date_val = await SimpleCalendar().process_selection(callback, callback_data)
+    selected, date_val = await DialogCalendar().process_selection(callback, callback_data)
 
     if not selected:
         return
 
     if date_val <= datetime.now().date():
         await callback.answer("❌ Нельзя выбрать прошедшую или сегодняшнюю дату", show_alert=True)
-        keyboard = await SimpleCalendar().start_calendar()
+        keyboard = await DialogCalendar().start_calendar()
         await callback.message.edit_text("🗓 Выберите дату (будущую):", reply_markup=keyboard)
         return
 

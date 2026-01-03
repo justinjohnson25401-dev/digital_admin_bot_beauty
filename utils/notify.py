@@ -1,7 +1,9 @@
+
 import logging
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from datetime import datetime
+from utils.db import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +17,11 @@ def format_time(time_str: str) -> str:
         return time_str
 
 # НОВОЕ: Функция для получения истории клиента (ошибка #3)
-def get_client_history_text(db_manager, user_id: int, current_order_id: int, limit: int = 5) -> str:
+def get_client_history_text(db_manager: DatabaseManager, user_id: int, current_order_id: int, limit: int = 5) -> str:
     """Получает текст с историей заказов клиента"""
     try:
         # Получаем все заказы клиента (не только активные)
-        all_bookings = db_manager.get_user_bookings(user_id, active_only=False)
+        all_bookings = db_manager.bookings.get_user_bookings(user_id, active_only=False)
         
         if not all_bookings or len(all_bookings) <= 1:
             return ""  # Нет истории (первый заказ)
@@ -68,7 +70,7 @@ def get_client_history_text(db_manager, user_id: int, current_order_id: int, lim
         return ""
 
 # ИЗМЕНЕНО: Добавлен параметр db_manager для истории клиента (ошибка #3, #7)
-async def send_order_to_admins(bot: Bot, admin_ids: list, order_data: dict, business_name: str, db_manager=None):
+async def send_order_to_admins(bot: Bot, admin_ids: list, order_data: dict, business_name: str, db_manager: DatabaseManager =None):
     """Отправка уведомления о новом заказе администраторам"""
     message_text = (
         f"🔔 Новая заявка в {business_name}\n\n"
@@ -117,7 +119,7 @@ async def send_order_to_admins(bot: Bot, admin_ids: list, order_data: dict, busi
             logger.error(f"Unexpected error sending notification to admin {admin_id}: {e}")
 
 # ИЗМЕНЕНО: Добавлен параметр db_manager для истории клиента (ошибка #3, #7)
-async def send_order_change_to_admins(bot: Bot, admin_ids: list, old_order: dict, new_order: dict, business_name: str, db_manager=None):
+async def send_order_change_to_admins(bot: Bot, admin_ids: list, old_order: dict, new_order: dict, business_name: str, db_manager: DatabaseManager=None):
     """Отправляет уведомление администраторам об изменении заказа"""
     # Форматируем время
     old_time = format_time(old_order.get('booking_time', ''))
