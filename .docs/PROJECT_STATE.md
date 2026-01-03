@@ -1,28 +1,28 @@
-# 🎯 PROJECT STATE
+# Состояние проекта
 
-### Last Update: 2026-01-04
-
----
-
-### 📝 CURRENT OBJECTIVE
-
-- **Goal:** Complete the full refactoring of the monolithic handlers and improve the overall codebase architecture.
-- **Next Step:** Commit the recent refactoring of the `mybookings.py` module and document the changes.
+**ПОСЛЕДНЕЕ ИЗМЕНЕНИЕ:** 2026-01-03 04:30:00 UTC+5
 
 ---
 
-### ✅ COMPLETED TASKS
+## Что работает
 
-- **Refactored `mybookings.py`:** Successfully modularized the handler into `view`, `cancel`, and `reschedule` components.
-- **Refactored `booking.py`:** Modularized the main booking handler.
-- **Refactored `DBManager`:** Separated DB connection logic from query logic.
-- **Fixed Critical Race Condition:** Prevented double bookings with atomic transactions.
-- **Implemented FSM Storage:** Added `SQLiteStorage` for persistent user states.
+- Базовая структура проекта
+- Установщик `setup.py`
+- Запуск бота `main.py`
+- Исправлены импорты aiogram 3.x
 
----
+## Что в процессе
 
-### 🔮 FUTURE GOALS
+- Рефакторинг кода
+- Улучшение архитектуры
 
-- **Improve Admin Notifications:** Enhance notifications for booking changes to show old vs. new data clearly.
-- **Code Documentation:** Add more detailed docstrings and comments where necessary.
-- **Expand Testing:** Introduce a more formal testing framework.
+## Известные проблемы
+
+- **FSM использует MemoryStorage - состояния не персистентны.** При перезапуске бота все активные состояния пользователей (например, в процессе записи) будут сброшены. Это временное решение для совместимости. В будущем нужно перейти на RedisStorage или аналогичное персистентное хранилище.
+- Возможны проблемы с логикой после рефакторинга.
+- `handlers/booking.py` слишком большой (1020 строк), требуется рефакторинг.
+
+## Ближайшие планы
+
+1.  Рефакторинг `handlers/booking.py`
+2.  Этап 2: рефакторинг `main.py`

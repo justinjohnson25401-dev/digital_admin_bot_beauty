@@ -10,6 +10,11 @@ import json
 import subprocess
 import re
 
+# Добавляем корневую директорию проекта в PYTHONPATH
+# Это решает проблему с импортом модулей из `utils`
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+
 # ==================== ВЕРСИЯ БОТА ====================
 BOT_VERSION = "2.7.0"
 BOT_BUILD_DATE = "2026-01-02 21:41"
@@ -200,7 +205,7 @@ def init_database(slug):
     print_step(6, "Инициализация базы данных")
 
     try:
-        from utils.db_manager import DBManager
+        from utils.db import DBManager  # Теперь этот импорт сработает
         db = DBManager(slug)
         db.init_db()
         db.close()
