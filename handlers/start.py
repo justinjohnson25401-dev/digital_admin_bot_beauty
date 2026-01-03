@@ -13,8 +13,7 @@ from .booking.keyboards import get_main_keyboard, get_info_keyboard
 # Импортируем навигатор для кнопки "Назад" и функцию старта бронирования
 from .booking.router_nav import navigate_back
 from .booking.category import start_booking_flow
-# Импортируем обработчик "Моих записей"
-from .my_records import show_my_records
+# Обработчик "Мои записи" теперь в handlers/mybookings/view.py
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -53,10 +52,7 @@ async def cmd_start_booking(message: Message, state: FSMContext, config: dict):
     """Запускает процесс бронирования из главного меню."""
     await start_booking_flow(message, state, config)
 
-@router.message(F.text == "📋 Мои записи")
-async def cmd_my_records(message: Message, db_manager, config: dict):
-    """Показывает раздел 'Мои записи'."""
-    await show_my_records(message, db_manager, config)
+# Обработчик "📋 Мои записи" перенесён в handlers/mybookings/view.py
 
 @router.callback_query(F.data == "start_booking")
 async def callback_start_booking(callback: CallbackQuery, state: FSMContext, config: dict):

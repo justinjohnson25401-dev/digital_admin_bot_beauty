@@ -52,7 +52,7 @@ async def save_booking_to_db(data: dict, user_id: int, db_manager) -> int:
         service_id=data.get('service_id'),
         service_name=data.get('service_name'),
         price=data.get('price'),
-        client_name=data.get('client_name'),
+        client_name=data.get('name'),  # contact.py сохраняет как 'name'
         phone=data.get('phone'),
         comment=data.get('comment'),
         booking_date=data.get('booking_date'),
@@ -95,7 +95,7 @@ async def send_admin_notification(callback: CallbackQuery, config: dict, data: d
                 'price': data.get('price'),
                 'booking_date': data.get('booking_date'),
                 'booking_time': data.get('booking_time'),
-                'client_name': data.get('client_name'),
+                'client_name': data.get('name'),  # contact.py сохраняет как 'name'
                 'phone': data.get('phone'),
                 'username': callback.from_user.username,
                 'master_name': data.get('master_name')
@@ -107,7 +107,38 @@ async def send_admin_notification(callback: CallbackQuery, config: dict, data: d
         logger.error(f"Failed to notify admins: {e}")
 
 async def return_to_time_selection(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
+    """Возвращает пользователя к выбору времени при конфликте слотов."""
+    from datetime import date as date_type, timedelta
+
     data = await state.get_data()
-    keyboard = get_time_slots_keyboard(config, db_manager, data.get('booking_date'), master_id=data.get('master_id'))
-    await callback.message.edit_text(f"📅 {data.get('booking_date')}\n\n⚠️ Выбранное время занято. Выберите другое:", reply_markup=keyboard)
+    booking_date_str = data.get('booking_date')
+    master_id = data.get('master_id')
+
+    # Получаем занятые слоты
+    busy_slots = db_manager.get_busy_slots(booking_date_str, master_id)
+
+    # Генерируем все возможные слоты на основе конфига
+    selected_date = date_type.fromisoformat(booking_date_str)
+    work_hours_str = config.get('work_hours', {}).get(selected_date.strftime('%A').lower(), "09:00-18:00")
+    start_work_str, end_work_str = work_hours_str.split('-')
+    start_work_time = datetime.strptime(start_work_str, '%H:%M').time()
+    end_work_time = datetime.strptime(end_work_str, '%H:%M').time()
+    interval_minutes = config.get('booking_settings', {}).get('time_slot_interval', 30)
+
+    all_slots = []
+    current_time = datetime.combine(selected_date, start_work_time)
+    end_datetime = datetime.combine(selected_date, end_work_time)
+
+    while current_time < end_datetime:
+        all_slots.append(current_time.strftime('%H:%M'))
+        current_time += timedelta(minutes=interval_minutes)
+
+    # Фильтруем занятые слоты
+    available_slots = [slot for slot in all_slots if slot not in busy_slots]
+
+    keyboard = get_time_slots_keyboard(available_slots)
+    await callback.message.edit_text(
+        f"📅 {selected_date.strftime('%d.%m.%Y')}\n\n⚠️ Выбранное время занято. Выберите другое:",
+        reply_markup=keyboard
+    )
     await state.set_state(BookingState.choosing_time)

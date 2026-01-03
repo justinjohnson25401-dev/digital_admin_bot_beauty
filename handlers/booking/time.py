@@ -66,7 +66,10 @@ async def time_selected(callback: CallbackQuery, state: FSMContext, db_manager):
     # Combine date and time to create a full datetime object
     booking_datetime = datetime.combine(booking_date, time.fromisoformat(selected_time_str))
     
-    await state.update_data(booking_datetime=booking_datetime.isoformat())
+    await state.update_data(
+        booking_datetime=booking_datetime.isoformat(),
+        booking_time=selected_time_str  # Сохраняем время отдельно для save.py
+    )
     logger.info(f"User {callback.from_user.id} selected time: {booking_datetime.isoformat()}")
     
     # Proceed to contact info request
