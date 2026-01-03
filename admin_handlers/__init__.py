@@ -1,20 +1,24 @@
 """
 Package for all admin handlers.
+Содержит редакторы для админ-панели.
 """
 
-from aiogram import Router
+from . import (
+    staff,
+    services_editor,
+    settings_editor,
+    business_settings,
+    texts_editor,
+    notifications_editor,
+    promotions_editor,
+)
 
-from . import staff, base, services, orders
-
-def setup_admin_handlers() -> Router:
-    """
-    Setup all admin handlers.
-    """
-    router = Router()
-
-    router.include_router(base.router)
-    router.include_router(services.router)
-    router.include_router(orders.router)
-    router.include_router(staff.router)
-
-    return router
+__all__ = [
+    'staff',
+    'services_editor',
+    'settings_editor',
+    'business_settings',
+    'texts_editor',
+    'notifications_editor',
+    'promotions_editor',
+]

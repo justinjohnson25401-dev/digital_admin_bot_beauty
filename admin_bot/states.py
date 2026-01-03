@@ -108,6 +108,10 @@ class StaffEditorStates(StatesGroup):
     enter_close_reason = State()
     confirm_open_date = State()
 
+    # Добавление закрытых дат (с календарём)
+    add_closed_date_cal = State()  # Выбор даты в календаре
+    add_closed_date_reason = State()  # Ввод причины закрытия
+
     # Удаление
     confirm_delete = State()
 
