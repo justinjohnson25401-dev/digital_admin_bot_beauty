@@ -1,56 +1,48 @@
-# 🧠 CONTEXT FOR AI
+# Контекст проекта для AI
 
-## Project Overview
+## 1. Общее описание
 
-- **Project:** Telegram Bot for Business (V2)
-- **Purpose:** A modular and configurable Telegram bot designed to help small businesses manage client bookings, appointments, and showcase their services.
-- **Key Technologies:** Python, `aiogram` (v3+), SQLite.
-- **Core Principles:** Modularity, Configurability, Separation of Concerns.
+**Название проекта:** Telegram-бот для онлайн-записи (Booking Bot).
 
----
+**Цель:** Предоставить бизнесам (салоны красоты, автосервисы, клиники и т.д.) готового Telegram-бота для автоматизации процесса записи клиентов на услуги.
 
-## Codebase Structure
+**Конечный пользователь:** Клиенты бизнесов, которые хотят записаться на услугу.
 
-- **`main.py`:**
-  - **Entry point** of the application.
-  - Initializes the bot, dispatcher, database (`DBManager`), FSM storage (`SQLiteStorage`), and configuration.
-  - Sets up middleware for dependency injection (config, db_manager).
-  - **Dynamically loads configuration** from the `/config` directory and watches for changes.
-  - Registers all routers from the `handlers` packages.
+**Владелец проекта:** Выступает в роли менеджера продукта, не является программистом.
 
-- **`handlers/`:**
-  - **Contains all user-facing logic** organized into packages (routers).
-  - **`handlers/start.py`**: Handles the `/start` command and main menu navigation.
-  - **`handlers/booking/`**: A package for the new booking process.
-    - Logic is split into `appointment.py`, `calendar_utils.py`, `confirmation.py`, etc.
-  - **`handlers/mybookings/`**: A package for managing existing bookings.
-    - `view.py`: Display user's bookings.
-    - `cancel.py`: Cancel a booking.
-    - `reschedule.py`: Edit a booking (date, time, service).
+## 2. Ключевая функциональность
 
-- **`utils/`:**
-  - **`utils/config_loader.py`**: Merges multiple JSON config files from a directory into a single dictionary.
-  - **`utils/db/`**: Database management package.
-    - **`db_manager.py`**: The `DBManager` class, responsible *only* for connection management and initialization.
-    - **`*_queries.py`**: Modules containing specific SQL query functions (e.g., `booking_queries.py`, `user_queries.py`). Queries are separated by domain.
-  - **`utils/notify.py`**: Functions for sending notifications to administrators.
+- **Выбор услуг:** Клиент может просматривать услуги, сгруппированные по категориям.
+- **Выбор мастера:** Клиент может выбрать конкретного мастера или опцию "Любой свободный".
+- **Выбор даты и времени:** Клиент видит доступные слоты в календаре и выбирает удобное время.
+- **Сбор данных клиента:** Бот запрашивает имя, телефон и (опционально) комментарий.
+- **Подтверждение записи:** Клиент видит сводку по своей записи и подтверждает её.
+- **Уведомления:**
+  - Клиент получает сообщение об успешной записи.
+  - Администратор бизнеса получает уведомление о новой записи.
+- **Управление записями:** Клиент может просмотреть свои предстоящие записи и отменить их.
 
-- **`states/`:**
-  - **`states/booking.py`**: Defines all `aiogram` FSM (Finite State Machine) states for the booking and editing processes.
+## 3. Технический стек
 
-- **`config/`:**
-  - **MUST NOT BE MODIFIED BY THE AI.**
-  - Directory containing user-defined `.json` configuration files. The AI should read from here but never write.
+- **Язык:** Python
+- **Основная библиотека (Telegram Bot):** `aiogram 3.x`
+- **База данных:** `SQLite` (локальный файл `database.db`)
+- **Принципы:** Конечные автоматы (FSM) для управления состоянием диалога.
 
-- **`.docs/`:**
-  - **AI-managed documentation.** Contains files like this one, `CHANGELOG_AI.md`, `BUGS_TRACKER.md`, and `PROJECT_STATE.md` to track the development process.
+## 4. Структура проекта
 
----
+- **`/` (корень):** Основные файлы, включая `main.py` (точка входа).
+- **`.docs/`:** Вся документация для AI-ассистентов.
+- **`handlers/`:** Обработчики сообщений и колбэков от пользователей.
+  - `handlers/booking/`: Логика, связанная непосредственно с процессом записи.
+- **`states/`:** Определения состояний для FSM (`aiogram`).
+- **`utils/`:** Вспомогательные модули.
+  - `utils/db/database.py`: Основной класс для управления соединением с БД.
+  - `utils/db/*_queries.py`: Модули с SQL-запросами для конкретных сущностей (записи, пользователи).
+- **`templates/`:** JSON-файлы с конфигурациями для разных типов бизнеса. Эти файлы содержат всё: от названия и услуг до текстов сообщений.
 
-## Key Architectural Decisions
+## 5. Важные аспекты
 
-1.  **Modular Routers:** Instead of large, monolithic handler files, logic is split into `aiogram` `Router`s, often grouped into packages for major features (e.g., `booking`, `mybookings`).
-2.  **Separation of Concerns in DB Layer:** The `DBManager` handles *how* to connect, while the `*_queries.py` modules handle *what* to query. This makes the code cleaner and easier to test.
-3.  **Dynamic Configuration:** The bot can be reconfigured without a restart by simply changing the JSON files in the `/config` directory. `main.py` handles hot-reloading.
-4.  **Persistent FSM:** `SQLiteStorage` is used to ensure user states in conversations are not lost if the bot restarts.
-5.  **AI-Driven Development:** An AI assistant (like me) is responsible for writing, refactoring, and documenting code. The `.docs` directory is the AI's primary workspace for tracking tasks and changes.
+- **Конфигурация:** Бот является "коробочным" решением. Вся настройка (услуги, мастера, расписание, тексты) производится через редактирование JSON-файлов в папке `templates/`. Это позволяет быстро запускать ботов для разных клиентов без изменения кода.
+- **База данных:** Взаимодействие с БД должно происходить ИСКЛЮЧИТЕЛЬНО через `DatabaseManager`, который передается в обработчики. Это обеспечивает корректное управление транзакциями и предотвращает ошибки.
+- **Стабильность:** Проект требует высокой надежности. Особое внимание уделяется обработке ошибок и крайних случаев (например, "состояние гонки" при одновременном бронировании).

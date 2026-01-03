@@ -1,20 +1,5 @@
-# 🐞 BUGS TRACKER
+# AI Bug Tracker
 
-Этот файл отслеживает ошибки, найденные в проекте.
-
----
-
-## 🎯 К ВЫПОЛНЕНИЮ
-
-*   На данный момент активных задач нет.
-
----
-
-## ✅ ГОТОВО
-
-- [✅] **ERROR #1, #5:** `AttributeError: 'Bot' object has no attribute '__name__'` в `admin_bot/main.py` и `main.py`.
-- [✅] **ERROR #2, #6:** `TypeError: Dispatcher.__init__() missing 1 required positional argument: 'storage'` в `admin_bot/main.py` и `main.py`.
-- [✅] **ERROR #3, #7:** `db_manager` не передавался в функции уведомлений, что вызывало ошибку при получении истории клиента.
-- [✅] **ERROR #4:** Неправильный вызов `get_user_bookings` напрямую из `db_manager` вместо `db_manager.bookings` в `utils/notify.py`.
-- [✅] **ERROR #8:** `AttributeError: 'StaffQueries' object has no attribute 'get_order_by_id'`, так как `StaffQueries` не наследовал `BookingQueries`.
-- [✅] **РЕФАКТОРИНГ:** Модульная структура базы данных. `utils/db.py` был преобразован в пакет `utils/db/` с классом `DatabaseManager` для централизованного управления запросами.
+| ID | Bug Description | Priority | Status | Date Found | Date Fixed | Session Notes |
+|:---|:---|:---|:---|:---|:---|:---|
+| 001 | **Race Condition in Booking Confirmation:** If two users try to book the same slot simultaneously, the first user succeeds, but the second user's session hangs or crashes because an unhandled `ValueError` is raised from the database layer. The user receives no feedback. | **Critical** | **Fixed** | 2024-05-21 | 2024-05-21 | The bug was fixed by implementing `try...except` error handling in `handlers/booking/confirmation.py` and adding a user-friendly error message. See Session 2024-05-21 in `CHANGELOG_AI.md`. |

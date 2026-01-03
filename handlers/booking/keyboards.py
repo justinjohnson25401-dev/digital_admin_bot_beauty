@@ -1,146 +1,119 @@
 """
-Все клавиатуры для процесса бронирования.
+Функции для создания клавиатур в процессе бронирования и главного меню.
 """
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-from datetime import datetime, timedelta
-import logging
+from calendar import monthcalendar
+from datetime import date
 
-from utils.calendar import generate_calendar_keyboard
-
-logger = logging.getLogger(__name__)
-
-def get_cancel_keyboard() -> ReplyKeyboardMarkup:
-    """Клавиатура с кнопкой отмены FSM."""
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="❌ Отменить")]],
-        resize_keyboard=True
-    )
-
-def get_phone_input_keyboard() -> ReplyKeyboardMarkup:
-    """Клавиатура для запроса номера телефона."""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📱 Отправить номер", request_contact=True)],
-            [KeyboardButton(text="✏️ Ввести вручную")],
-            [KeyboardButton(text="❌ Отменить")]
-        ],
-        resize_keyboard=True
-    )
-
-def get_comment_choice_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура для выбора - добавить комментарий или пропустить."""
-    return InlineKeyboardMarkup(inline_keyboard=[
+def get_main_keyboard() -> ReplyKeyboardMarkup:
+    """Создание главной клавиатуры с навигацией"""
+    buttons = [
         [
-            InlineKeyboardButton(text="✏️ Добавить", callback_data="add_comment"),
-            InlineKeyboardButton(text="➡️ Пропустить", callback_data="skip_comment")
-        ]
-    ])
+            KeyboardButton(text="📅 Записаться"),
+            KeyboardButton(text="📋 Мои записи")
+        ],
+        [
+            KeyboardButton(text="💅 Услуги и цены"),
+            KeyboardButton(text="👩‍🎨 Мастера")
+        ],
+        [
+            KeyboardButton(text="🎁 Акции"),
+            KeyboardButton(text="ℹ️ О нас")
+        ],
+        [
+            KeyboardButton(text="❓ FAQ"),
+            KeyboardButton(text="◀️ Назад"),
+        ],
+    ]
+
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True
+    )
+
+def get_info_keyboard(add_booking_button: bool = True) -> InlineKeyboardMarkup:
+    """Создает стандартную inline-клавиатуру для информационных разделов."""
+    buttons = []
+    if add_booking_button:
+        buttons.append([InlineKeyboardButton(text="📅 Записаться", callback_data="start_booking")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_main_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_categories_keyboard(categories: list) -> InlineKeyboardMarkup:
-    """Клавиатура для выбора категории услуг."""
-    buttons = [[InlineKeyboardButton(text=f"📂 {cat}", callback_data=f"cat:{cat}")] for cat in categories]
+    """Creates a keyboard with service categories."""
+    buttons = []
+    for category in categories:
+        buttons.append([InlineKeyboardButton(text=category, callback_data=f"cat:{category}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def get_services_keyboard(services: list, category_name: str = None) -> InlineKeyboardMarkup:
-    """Клавиатура для выбора услуги."""
+    """Creates a keyboard with services."""
     buttons = []
-    for svc in services:
-        dur_text = f" • {svc.get('duration', 0)}мин" if svc.get('duration') else ""
-        buttons.append([InlineKeyboardButton(text=f"{svc['name']} — {svc['price']}₽{dur_text}", callback_data=f"srv:{svc['id']}")])
+    for service in services:
+        button_text = f"{service['name']} - {service['price']}"
+        buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"srv:{service['id']}")])
+    # Add a back button if inside a category
+    if category_name:
+        buttons.append([InlineKeyboardButton(text="◀️ Назад к категориям", callback_data="back_to_categories")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
-
 
 def get_masters_keyboard(masters: list) -> InlineKeyboardMarkup:
-    """Клавиатура для выбора мастера."""
-    buttons = [[InlineKeyboardButton(text=f"👤 {m['name']}", callback_data=f"master:{m['id']}")] for m in masters]
-    buttons.append([InlineKeyboardButton(text="👥 Любой свободный мастер", callback_data="master:any")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-def get_dates_keyboard(config: dict = None, master_id: str = None) -> InlineKeyboardMarkup:
-    """
-    Генерирует упрощённую клавиатуру выбора даты:
-    - Сегодня
-    - Завтра
-    - Другой день (календарь)
-    """
-    from .utils import is_date_closed_for_master  # Local import to avoid circular dependency
-    today = datetime.now().date()
-    tomorrow = (datetime.now() + timedelta(days=1)).date()
+    """Creates a keyboard for selecting a master."""
     buttons = []
-    
-    is_today_closed, _ = is_date_closed_for_master(config, master_id, today) if config else (False, None)
-    is_tomorrow_closed, _ = is_date_closed_for_master(config, master_id, tomorrow) if config else (False, None)
-    
-    if not is_today_closed:
-        buttons.append([InlineKeyboardButton(text="📅 Сегодня", callback_data=f"quick_date:{today.isoformat()}")])
-    else:
-        buttons.append([InlineKeyboardButton(text="🚫 Сегодня (закрыто)", callback_data="date_closed")])
-        
-    if not is_tomorrow_closed:
-        buttons.append([InlineKeyboardButton(text="📅 Завтра", callback_data=f"quick_date:{tomorrow.isoformat()}")])
-    else:
-        buttons.append([InlineKeyboardButton(text="🚫 Завтра (закрыто)", callback_data="date_closed")])
-        
-    buttons.append([InlineKeyboardButton(text="📅 Другой день", callback_data="open_calendar")])
+    for master in masters:
+        buttons.append([InlineKeyboardButton(text=master['name'], callback_data=f"master:{master['id']}")])
+    buttons.append([InlineKeyboardButton(text="Любой свободный мастер", callback_data="master:any")])
+    # Add a back button to go back to service selection
+    buttons.append([InlineKeyboardButton(text="◀️ Назад к услугам", callback_data="back_to_services")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-
-def get_time_slots_keyboard(config: dict, db_manager, booking_date: str, master_id: str = None, exclude_order_id: int = None) -> InlineKeyboardMarkup:
-    """Генерирует клавиатуру со слотами времени."""
+def get_calendar_keyboard(year: int, month: int) -> InlineKeyboardMarkup:
+    """Creates a calendar keyboard for a given month and year."""
     buttons = []
-    work_start = int(config.get('booking', {}).get('work_start', 10))
-    work_end = int(config.get('booking', {}).get('work_end', 20))
-    slot_duration = int(config.get('booking', {}).get('slot_duration', 60))
-    if slot_duration <= 0:
-        slot_duration = 60
-        logger.warning("slot_duration <= 0, using default 60 minutes")
+    # Month and year header
+    header = date(year, month, 1).strftime('%B %Y')
+    buttons.append([InlineKeyboardButton(text=header, callback_data="calendar:ignore:0:0:0")])
+    # Day of the week headers
+    week_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    buttons.append([InlineKeyboardButton(text=day, callback_data="calendar:ignore:0:0:0") for day in week_days])
 
-    current_time = datetime.now()
-    selected_date = datetime.fromisoformat(booking_date).date()
-    is_today = selected_date == current_time.date()
-    start_minutes = work_start * 60
-    end_minutes = work_end * 60
-    current_minutes = start_minutes
+    # Calendar days
+    month_cal = monthcalendar(year, month)
+    for week in month_cal:
+        row = []
+        for day in week:
+            if day == 0:
+                row.append(InlineKeyboardButton(text=" ", callback_data="calendar:ignore:0:0:0"))
+            else:
+                row.append(InlineKeyboardButton(text=str(day), callback_data=f"calendar:select-day:{year}:{month}:{day}"))
+        buttons.append(row)
 
-    while current_minutes < end_minutes:
-        hour = current_minutes // 60
-        minute = current_minutes % 60
-        slot_time = f"{hour:02d}:{minute:02d}"
-        if is_today:
-            slot_datetime = datetime.combine(selected_date, datetime.strptime(slot_time, "%H:%M").time())
-            if slot_datetime <= current_time:
-                current_minutes += slot_duration
-                continue
+    # Navigation buttons
+    nav_row = [
+        InlineKeyboardButton(text="<", callback_data=f"calendar:prev-month:{year}:{month}:1"),
+        InlineKeyboardButton(text=">", callback_data=f"calendar:next-month:{year}:{month}:1")
+    ]
+    buttons.append(nav_row)
+    
+    # Back button
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_master_choice")])
 
-        if master_id and hasattr(db_manager, 'check_slot_availability_for_master'):
-            is_available = db_manager.check_slot_availability_for_master(
-                booking_date, slot_time, master_id, exclude_order_id=exclude_order_id
-            )
-        else:
-            is_available = db_manager.check_slot_availability(
-                booking_date, slot_time, exclude_order_id=exclude_order_id
-            )
-
-        if is_available:
-            buttons.append([InlineKeyboardButton(text=f"🕐 {slot_time}", callback_data=f"time:{slot_time}")])
-        else:
-            buttons.append([InlineKeyboardButton(text=f"❌ {slot_time}", callback_data="slot_taken")])
-        current_minutes += slot_duration
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+def get_time_slots_keyboard(slots: list) -> InlineKeyboardMarkup:
+    """Creates a keyboard with available time slots."""
+    buttons = []
+    row = []
+    for slot in slots:
+        row.append(InlineKeyboardButton(text=slot, callback_data=f"time:{slot}"))
+        if len(row) == 4: # Adjust number of columns here
+            buttons.append(row)
+            row = []
+    if row: # Add the last row if it's not full
+        buttons.append(row)
+        
+    # Back button
+    buttons.append([InlineKeyboardButton(text="◀️ Назад к выбору даты", callback_data="back_to_date_choice")])
 
-def get_confirmation_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура для подтверждения записи."""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Подтвердить", callback_data="confirm_booking"),
-            InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")
-        ],
-        [
-            InlineKeyboardButton(text="✏️ Изменить имя", callback_data="edit_name"),
-            InlineKeyboardButton(text="✏️ Изменить телефон", callback_data="edit_phone")
-        ]
-    ])
-    return keyboard
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

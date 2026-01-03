@@ -1,0 +1,2545 @@
+
+=== FILE: .docs/BUGS_TRACKER.md ===
+# AI Bug Tracker
+
+| ID | Bug Description | Priority | Status | Date Found | Date Fixed | Session Notes |
+|:---|:---|:---|:---|:---|:---|:---|
+| 001 | **Race Condition in Booking Confirmation:** If two users try to book the same slot simultaneously, the first user succeeds, but the second user's session hangs or crashes because an unhandled `ValueError` is raised from the database layer. The user receives no feedback. | **Critical** | **Fixed** | 2024-05-21 | 2024-05-21 | The bug was fixed by implementing `try...except` error handling in `handlers/booking/confirmation.py` and adding a user-friendly error message. See Session 2024-05-21 in `CHANGELOG_AI.md`. |
+
+=== FILE: .docs/CHANGELOG_AI.md ===
+# AI Changelog
+
+## Session 2024-05-21
+
+### Task: Improve Bot Robustness and Fix Race Condition in Booking
+
+#### Summary:
+The user prioritized improving the existing functionality's stability over adding new features. A critical race condition vulnerability was identified and fixed in the booking confirmation process. This prevents double-booking the same time slot if two users attempt to book it simultaneously.
+
+#### Initial Misstep and Correction:
+*   **Initial Action (Rolled Back):** Initially, I proactively started implementing a new feature to make the "Masters" list interactive. This involved modifying `handlers/start.py`.
+*   **User Feedback & Rollback:** The user correctly pointed out that this action was not confirmed. The changes were immediately reverted, and the focus was shifted to the user's priority: stability.
+
+#### Investigation and Bug Discovery:
+1.  **Hypothesis:** A potential race condition was hypothesized where two users could book the same slot.
+2.  **Code Review (`utils/db/booking_queries.py`):** Analysis of the database layer showed that it correctly prevents double-booking by using a transaction and raising a `ValueError` if the slot is already taken. The initial assumption of a bug in the DB layer was incorrect.
+3.  **Code Review (`handlers/booking/confirmation.py`):** Further analysis of the handler layer revealed the true issue: the `ValueError` raised by the database layer was **not handled**. This would cause the bot to hang or crash for the second user, providing no feedback.
+
+#### Implementation of the Fix:
+1.  **Modified `templates/beauty_salon.json`:**
+    *   Updated the `slot_taken` message to be more user-friendly and provide clear instructions: *"К сожалению, выбранное вами время было только что забронировано. Пожалуйста, вернитесь назад и выберите другой свободный слот."*
+
+2.  **Modified `handlers/booking/confirmation.py`:**
+    *   Wrapped the call to `db_manager.create_booking` in a `try...except ValueError` block to catch the specific error for a taken slot.
+    *   Added logic to send the user the `slot_taken` message upon catching the error.
+    *   Included an inline button "◀️ Выбрать другое время" to allow the user to easily go back to the time selection step, improving UX.
+    *   Added a general `except Exception` block to gracefully handle any other unexpected errors during booking.
+    *   Refactored the admin notification logic into a separate `notify_admin_on_booking` function for better code readability and separation of concerns.
+
+#### Files Modified:
+*   `templates/beauty_salon.json`
+*   `handlers/booking/confirmation.py`
+
+#### Files Verified (No Changes Needed):
+*   `utils/db/booking_queries.py`
+
+=== FILE: .docs/CONTEXT_FOR_AI.md ===
+# Контекст проекта для AI
+
+## 1. Общее описание
+
+**Название проекта:** Telegram-бот для онлайн-записи (Booking Bot).
+
+**Цель:** Предоставить бизнесам (салоны красоты, автосервисы, клиники и т.д.) готового Telegram-бота для автоматизации процесса записи клиентов на услуги.
+
+**Конечный пользователь:** Клиенты бизнесов, которые хотят записаться на услугу.
+
+**Владелец проекта:** Выступает в роли менеджера продукта, не является программистом.
+
+## 2. Ключевая функциональность
+
+- **Выбор услуг:** Клиент может просматривать услуги, сгруппированные по категориям.
+- **Выбор мастера:** Клиент может выбрать конкретного мастера или опцию "Любой свободный".
+- **Выбор даты и времени:** Клиент видит доступные слоты в календаре и выбирает удобное время.
+- **Сбор данных клиента:** Бот запрашивает имя, телефон и (опционально) комментарий.
+- **Подтверждение записи:** Клиент видит сводку по своей записи и подтверждает её.
+- **Уведомления:**
+  - Клиент получает сообщение об успешной записи.
+  - Администратор бизнеса получает уведомление о новой записи.
+- **Управление записями:** Клиент может просмотреть свои предстоящие записи и отменить их.
+
+## 3. Технический стек
+
+- **Язык:** Python
+- **Основная библиотека (Telegram Bot):** `aiogram 3.x`
+- **База данных:** `SQLite` (локальный файл `database.db`)
+- **Принципы:** Конечные автоматы (FSM) для управления состоянием диалога.
+
+## 4. Структура проекта
+
+- **`/` (корень):** Основные файлы, включая `main.py` (точка входа).
+- **`.docs/`:** Вся документация для AI-ассистентов.
+- **`handlers/`:** Обработчики сообщений и колбэков от пользователей.
+  - `handlers/booking/`: Логика, связанная непосредственно с процессом записи.
+- **`states/`:** Определения состояний для FSM (`aiogram`).
+- **`utils/`:** Вспомогательные модули.
+  - `utils/db/database.py`: Основной класс для управления соединением с БД.
+  - `utils/db/*_queries.py`: Модули с SQL-запросами для конкретных сущностей (записи, пользователи).
+- **`templates/`:** JSON-файлы с конфигурациями для разных типов бизнеса. Эти файлы содержат всё: от названия и услуг до текстов сообщений.
+
+## 5. Важные аспекты
+
+- **Конфигурация:** Бот является "коробочным" решением. Вся настройка (услуги, мастера, расписание, тексты) производится через редактирование JSON-файлов в папке `templates/`. Это позволяет быстро запускать ботов для разных клиентов без изменения кода.
+- **База данных:** Взаимодействие с БД должно происходить ИСКЛЮЧИТЕЛЬНО через `DatabaseManager`, который передается в обработчики. Это обеспечивает корректное управление транзакциями и предотвращает ошибки.
+- **Стабильность:** Проект требует высокой надежности. Особое внимание уделяется обработке ошибок и крайних случаев (например, "состояние гонки" при одновременном бронировании).
+=== FILE: .docs/PROJECT_STATE.md ===
+# Project State
+
+| File Path | Status | Last Modified (Session) | Notes |
+|:---|:---|:---|:---|
+| `handlers/booking/confirmation.py` | **Verified & Patched** | 2024-05-21 | Added `try-except` block to handle race conditions and other errors. Improved user feedback. |
+| `templates/beauty_salon.json` | **Verified & Modified** | 2024-05-21 | Updated the `slot_taken` error message for better clarity. |
+| `utils/db/booking_queries.py` | **Verified** | 2024-05-21 | Code reviewed. Confirmed that the database layer correctly uses transactions to prevent double booking and raises a `ValueError`. No changes were needed. |
+| `handlers/start.py` | **Rolled Back** | 2024-05-21 | Initial changes were reverted as they were not aligned with the user's immediate priority. |
+
+=== FILE: .docs/README.md ===
+# Документация для AI
+
+=== FILE: admin_bot/main.py ===
+#!/usr/bin/env python3
+"""
+BOT-BUSINESS V2.0 - Админ-панель
+Управление заказами, клиентами, статистикой
+"""
+
+import argparse
+import asyncio
+import logging
+import os
+import sys
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
+
+from utils.db import DatabaseManager
+from utils.config_loader import load_config  # ИСПРАВЛЕННЫЙ ИМПОРТ
+from utils.logger import setup_logger
+
+from admin_bot.middleware import (
+    AdminAuthMiddleware,
+    AdminPinMiddleware,
+    ConfigMiddleware,
+    PinMiddlewareInjector,
+)
+from admin_bot.handlers import setup_handlers
+
+# Импортируем admin handlers (роутеры)
+from admin_handlers import (
+    services_editor,
+    settings_editor,
+    business_settings,
+    texts_editor,
+    notifications_editor,
+    staff_editor,
+    promotions_editor,
+)
+
+
+async def main():
+    """Главная функция админ-бота"""
+    parser = argparse.ArgumentParser(description='Admin Bot for Bot-Business V2.0')
+    # Аргумент изменен на --config-dir для единообразия с main.py
+    parser.add_argument('--config-dir', type=str, default='config', help='Path to config directory')
+    args = parser.parse_args()
+
+    # Загрузка конфигурации
+    try:
+        config = load_config(args.config_dir)
+        # Инициализация логгера после загрузки конфига
+        logger = setup_logger(config['business_slug'], 'admin_bot')
+        logger.info(f"✅ Config loaded: {config.get('business_name')}")
+    except Exception as e:
+        logging.critical(f"❌ Failed to load config from '{args.config_dir}': {e}", exc_info=True)
+        return
+
+    # Токен админ-бота
+    admin_token = os.getenv('ADMIN_BOT_TOKEN')
+    if not admin_token:
+        logger.error("❌ ADMIN_BOT_TOKEN not found in .env!")
+        return
+
+    # Инициализация БД
+    db_manager = DatabaseManager(config['business_slug'])
+    try:
+        logger.info(f"✅ Database ready: db_{config['business_slug']}.sqlite")
+    except Exception as e:
+        logger.error(f"❌ Database error: {e}")
+        return
+
+    # Создаём бота и диспетчер
+    bot = Bot(token=admin_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
+
+    # Подключаем middlewares
+    # УДАЛЕНО: config_manager больше не используется
+    dp.update.middleware(ConfigMiddleware(config, db_manager))
+    dp.update.middleware(AdminAuthMiddleware(config))
+    pin_middleware = AdminPinMiddleware(config)
+    dp.update.middleware(pin_middleware)
+    dp.update.middleware(PinMiddlewareInjector(pin_middleware))
+
+    # Регистрируем handlers из модулей
+    setup_handlers(dp, pin_middleware)
+
+    # Подключаем роутеры из admin_handlers
+    dp.include_router(services_editor.router)
+    dp.include_router(settings_editor.router)
+    dp.include_router(business_settings.router)
+    dp.include_router(texts_editor.router)
+    dp.include_router(notifications_editor.router)
+    dp.include_router(staff_editor.router)
+    dp.include_router(promotions_editor.router)
+
+    logger.info(f"🚀 Admin Bot for '{config.get('business_name')}' started!")
+
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        await dp.start_polling(bot)
+    except KeyboardInterrupt:
+        logger.info("Received KeyboardInterrupt")
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+    finally:
+        db_manager.close()
+        await bot.session.close()
+        logger.info("🛑 Admin Bot stopped")
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
+
+=== FILE: configs/client_lite.json ===
+{
+  "config_version": 1,
+  "bot_token": "FROM_ENV",
+  "business_slug": "mini_studio",
+  "business_name": "Студия красоты \"Шарм\"",
+  "admin_ids": [
+    5122428712
+  ],
+  "industry": "beauty",
+  "contacts": {
+    "address": "г. Москва, ул. Цветочная, д. 15",
+    "phone": "+7 (495) 123-45-67"
+  },
+  "services": [
+    {
+      "id": "hair_women_cut",
+      "name": "Женская стрижка",
+      "price": 1800,
+      "duration": 60,
+      "category": "Волосы"
+    },
+    {
+      "id": "hair_men_cut",
+      "name": "Мужская стрижка",
+      "price": 1200,
+      "duration": 45,
+      "category": "Волосы"
+    },
+    {
+      "id": "hair_coloring",
+      "name": "Окрашивание волос",
+      "price": 4000,
+      "duration": 120,
+      "category": "Волосы"
+    },
+    {
+      "id": "hair_styling",
+      "name": "Укладка",
+      "price": 1500,
+      "duration": 45,
+      "category": "Волосы"
+    },
+    {
+      "id": "nails_manicure",
+      "name": "Маникюр классический",
+      "price": 1500,
+      "duration": 60,
+      "category": "Ногти"
+    },
+    {
+      "id": "nails_gel",
+      "name": "Маникюр с гель-лаком",
+      "price": 2200,
+      "duration": 90,
+      "category": "Ногти"
+    },
+    {
+      "id": "nails_pedicure",
+      "name": "Педикюр",
+      "price": 2500,
+      "duration": 90,
+      "category": "Ногти"
+    },
+    {
+      "id": "brows_correction",
+      "name": "Коррекция бровей",
+      "price": 900,
+      "duration": 30,
+      "category": "Брови и ресницы"
+    },
+    {
+      "id": "brows_lamination",
+      "name": "Ламинирование бровей",
+      "price": 2200,
+      "duration": 60,
+      "category": "Брови и ресницы"
+    },
+    {
+      "id": "lash_extension",
+      "name": "Наращивание ресниц",
+      "price": 3500,
+      "duration": 120,
+      "category": "Брови и ресницы"
+    },
+    {
+      "id": "face_cleaning",
+      "name": "Чистка лица",
+      "price": 3500,
+      "duration": 75,
+      "category": "Косметология"
+    },
+    {
+      "id": "face_peeling",
+      "name": "Пилинг",
+      "price": 2500,
+      "duration": 45,
+      "category": "Косметология"
+    },
+    {
+      "id": "combo_cut_styling",
+      "name": "Стрижка + укладка",
+      "price": 2800,
+      "duration": 90,
+      "category": "Комплексные услуги"
+    },
+    {
+      "id": "combo_mani_pedi",
+      "name": "Маникюр + педикюр",
+      "price": 4200,
+      "duration": 150,
+      "category": "Комплексные услуги"
+    },
+    {
+      "id": "combo_brows_lash",
+      "name": "Брови + ресницы",
+      "price": 5000,
+      "duration": 150,
+      "category": "Комплексные услуги"
+    }
+  ],
+  "booking": {
+    "work_start": 10,
+    "work_end": 21,
+    "slot_duration": 30,
+    "timezone": "Europe/Moscow"
+  },
+  "timezone_city": "Москва",
+  "timezone_offset_hours": 3,
+  "faq": [
+    {
+      "btn": "🕒 Часы работы",
+      "answer": "Пн–Пт: 10:00–21:00\nСб–Вс: 10:00–20:00"
+    },
+    {
+      "btn": "📞 Контакты",
+      "answer": "☎️ +7 (495) 123-45-67"
+    },
+    {
+      "btn": "💳 Способы оплаты",
+      "answer": "Принимаем наличные и банковские карты."
+    },
+    {
+      "btn": "❓ Как отменить запись",
+      "answer": "Перейдите в «📋 Мои записи» и нажмите кнопку отмены."
+    }
+  ],
+  "features": {
+    "enable_slot_booking": true,
+    "enable_admin_notify": true,
+    "require_phone": true,
+    "ask_comment": true
+  },
+  "messages": {
+    "welcome": "👋 Добро пожаловать в студию красоты «Шарм»!\n\nЗапишитесь к нашим мастерам за 30 секунд.",
+    "success": "✅ Запись №{id} подтверждена!\nЖдём вас {date} в {time}.",
+    "booking_cancelled": "❌ Запись отменена. Надеемся увидеть вас снова!",
+    "error_phone": "❌ Некорректный номер. Введите в формате +79991234567",
+    "error_generic": "❌ Произошла ошибка. Попробуйте позже.",
+    "slot_taken": "❌ Это время уже занято"
+  },
+  "staff": {
+    "enabled": true,
+    "masters": [
+      {
+        "id": "master_anna",
+        "name": "Анна",
+        "specialization": "Парикмахер-стилист",
+        "active": true,
+        "services": [
+          "hair_women_cut",
+          "hair_men_cut",
+          "hair_coloring",
+          "hair_styling",
+          "combo_cut_styling"
+        ],
+        "schedule": {
+          "monday": {
+            "working": true,
+            "start": "10:00",
+            "end": "19:00"
+          },
+          "tuesday": {
+            "working": true,
+            "start": "10:00",
+            "end": "19:00"
+          },
+          "wednesday": {
+            "working": true,
+            "start": "10:00",
+            "end": "19:00"
+          },
+          "thursday": {
+            "working": true,
+            "start": "10:00",
+            "end": "19:00"
+          },
+          "friday": {
+            "working": true,
+            "start": "10:00",
+            "end": "19:00"
+          },
+          "saturday": {
+            "working": true,
+            "start": "10:00",
+            "end": "18:00"
+          },
+          "sunday": {
+            "working": false
+          }
+        },
+        "closed_dates": []
+      },
+      {
+        "id": "master_maria",
+        "name": "Мария",
+        "specialization": "Мастер маникюра",
+        "active": true,
+        "services": [
+          "nails_manicure",
+          "nails_gel",
+          "nails_pedicure",
+          "combo_mani_pedi"
+        ],
+        "schedule": {
+          "monday": {
+            "working": false
+          },
+          "tuesday": {
+            "working": true,
+            "start": "10:00",
+            "end": "20:00"
+          },
+          "wednesday": {
+            "working": true,
+            "start": "10:00",
+            "end": "20:00"
+          },
+          "thursday": {
+            "working": true,
+            "start": "10:00",
+            "end": "20:00"
+          },
+          "friday": {
+            "working": true,
+            "start": "10:00",
+            "end": "20:00"
+          },
+          "saturday": {
+            "working": true,
+            "start": "10:00",
+            "end": "18:00"
+          },
+          "sunday": {
+            "working": false
+          }
+        },
+        "closed_dates": []
+      },
+      {
+        "id": "master_elena",
+        "name": "Елена",
+        "specialization": "Бровист",
+        "active": true,
+        "services": [
+          "brows_correction",
+          "brows_lamination",
+          "lash_extension",
+          "combo_brows_lash"
+        ],
+        "schedule": {
+          "monday": {
+            "working": true,
+            "start": "11:00",
+            "end": "20:00"
+          },
+          "tuesday": {
+            "working": true,
+            "start": "11:00",
+            "end": "20:00"
+          },
+          "wednesday": {
+            "working": false
+          },
+          "thursday": {
+            "working": true,
+            "start": "11:00",
+            "end": "20:00"
+          },
+          "friday": {
+            "working": true,
+            "start": "11:00",
+            "end": "20:00"
+          },
+          "saturday": {
+            "working": true,
+            "start": "10:00",
+            "end": "18:00"
+          },
+          "sunday": {
+            "working": true,
+            "start": "10:00",
+            "end": "16:00"
+          }
+        },
+        "closed_dates": []
+      },
+      {
+        "id": "master_olga",
+        "name": "Ольга",
+        "specialization": "Косметолог",
+        "active": true,
+        "services": [
+          "face_cleaning",
+          "face_peeling"
+        ],
+        "schedule": {
+          "monday": {
+            "working": true,
+            "start": "10:00",
+            "end": "18:00"
+          },
+          "tuesday": {
+            "working": false
+          },
+          "wednesday": {
+            "working": true,
+            "start": "10:00",
+            "end": "18:00"
+          },
+          "thursday": {
+            "working": false
+          },
+          "friday": {
+            "working": true,
+            "start": "10:00",
+            "end": "18:00"
+          },
+          "saturday": {
+            "working": true,
+            "start": "10:00",
+            "end": "16:00"
+          },
+          "sunday": {
+            "working": false
+          }
+        },
+        "closed_dates": []
+      }
+    ]
+  }
+}
+=== FILE: handlers/booking/__init__.py ===
+"""
+Собирает все роутеры из модуля booking в один.
+"""
+
+from aiogram import Router
+
+# Импортируем роутеры из всех частей процесса бронирования
+from .router_nav import router as nav_router
+from .category import router as category_router
+from .service import router as service_router
+from .master import router as master_router
+from .date import router as date_router
+from .time import router as time_router
+from .contact import router as contact_router
+from .confirmation import router as confirmation_router
+
+# Собираем все роутеры в один, чтобы подключить в главном __init__.py
+all_booking_routers = Router()
+
+all_booking_routers.include_router(nav_router)
+all_booking_routers.include_router(category_router)
+all_booking_routers.include_router(service_router)
+all_booking_routers.include_router(master_router)
+all_booking_routers.include_router(date_router)
+all_booking_routers.include_router(time_router)
+all_booking_routers.include_router(contact_router)
+all_booking_routers.include_router(confirmation_router)
+
+=== FILE: handlers/booking/category.py ===
+"""
+Обработчики для выбора категории и старта процесса бронирования.
+"""
+
+import logging
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
+
+from states.booking import BookingState
+from .keyboards import get_categories_keyboard
+from .service import show_services_list
+
+logger = logging.getLogger(__name__)
+
+router = Router()
+
+async def start_booking_flow(callback_or_message: Message | CallbackQuery, state: FSMContext, config: dict):
+    """Начинает процесс бронирования, показывая категории или сразу услуги."""
+    categories = config.get('categories', [])
+    message = callback_or_message if isinstance(callback_or_message, Message) else callback_or_message.message
+
+    if categories:
+        await message.answer(
+            text=config.get('messages', {}).get('category_selection', "Выберите категорию:"),
+            reply_markup=get_categories_keyboard(categories)
+        )
+        await state.set_state(BookingState.choosing_service)
+    else:
+        # Если категорий нет, сразу показываем услуги
+        await show_services_list(callback_or_message, state, config)
+
+@router.callback_query(BookingState.choosing_service, F.data.startswith("cat:"))
+async def category_selected(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Обрабатывает выбор категории и показывает список услуг в ней."""
+    category_name = callback.data.split(":")[1]
+    await state.update_data(category_name=category_name)
+    await show_services_list(callback, state, config, category_name)
+    await callback.answer()
+
+=== FILE: handlers/booking/confirmation.py ===
+"""
+Обработчики для подтверждения записи.
+"""
+
+import logging
+from datetime import datetime
+from aiogram import Router, F, Bot
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+
+from states.booking import BookingState
+
+logger = logging.getLogger(__name__)
+
+router = Router()
+
+async def show_confirmation(message: Message, state: FSMContext):
+    """Отображает сводку по бронированию для подтверждения."""
+    data = await state.get_data()
+    booking_datetime = datetime.fromisoformat(data.get('booking_datetime'))
+    
+    summary_text = (
+        f"<b>Подтвердите вашу запись:</b>\n\n"
+        f"<b>Услуга:</b> {data.get('service_name')}\n"
+        f"<b>Мастер:</b> {data.get('master_name', 'Любой')}\n"
+        f"<b>Дата и время:</b> {booking_datetime.strftime('%d.%m.%Y в %H:%M')}\n"
+        f"<b>Цена:</b> {data.get('price')}\n\n"
+        f"<b>Ваши данные:</b>\n"
+        f"<b>Имя:</b> {data.get('name')}\n"
+        f"<b>Телефон:</b> {data.get('phone')}\n"
+    )
+    if data.get('comment'):
+        summary_text += f"<b>Комментарий:</b> {data.get('comment')}\n"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Подтвердить и записаться", callback_data="confirm_booking")],
+        [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_booking_process")]
+    ])
+    
+    await message.answer(summary_text, reply_markup=keyboard)
+    await state.set_state(BookingState.confirmation)
+
+@router.callback_query(BookingState.confirmation, F.data == "confirm_booking")
+async def confirm_booking_callback(callback: CallbackQuery, state: FSMContext, db_manager, config: dict, admin_bot: Bot):
+    """Сохраняет бронирование в БД, уведомляет пользователя и администратора."""
+    user_id = callback.from_user.id
+    data = await state.get_data()
+    
+    try:
+        booking_id = db_manager.create_booking(
+            user_id=user_id,
+            service_id=data.get('service_id'),
+            service_name=data.get('service_name'),
+            master_id=data.get('master_id'),
+            master_name=data.get('master_name'),
+            booking_datetime=data.get('booking_datetime'),
+            price=data.get('price'),
+            comment=data.get('comment')
+        )
+
+        if not booking_id:
+            raise ValueError("Booking creation returned no ID")
+
+        logger.info(f"User {user_id} confirmed booking {booking_id}")
+
+        # Форматируем сообщение об успехе
+        success_template = config.get('messages', {}).get('success', "✅ Запись №{id} подтверждена!")
+        booking_datetime = datetime.fromisoformat(data.get('booking_datetime'))
+        
+        format_data = {
+            'id': booking_id,
+            'date': booking_datetime.strftime('%d.%m.%Y'),
+            'time': booking_datetime.strftime('%H:%M'),
+            'address': config.get('contacts', {}).get('address', ''),
+            'business_name': config.get('business_name', '')
+        }
+        
+        success_message = success_template.format(**format_data)
+        await callback.message.edit_text(success_message)
+
+        # Уведомление администратора (если настроено)
+        await notify_admin_on_booking(callback, data, booking_id, config, admin_bot)
+
+    except ValueError:
+        # Обработка ситуации, когда слот уже занят (race condition)
+        logger.warning(f"User {user_id} tried to book an already taken slot.")
+        error_msg = config.get('messages', {}).get('slot_taken', "К сожалению, это время уже занято.")
+        await callback.message.edit_text(error_msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Выбрать другое время", callback_data="back_to_time_selection")]
+        ]))
+    
+    except Exception as e:
+        # Обработка других непредвиденных ошибок
+        logger.error(f"An unexpected error occurred during booking confirmation: {e}", exc_info=True)
+        error_msg = config.get('messages', {}).get('error_generic', "❌ Произошла ошибка при записи.")
+        await callback.message.edit_text(error_msg)
+
+    finally:
+        # Очищаем состояние только в случае успеха или полной отмены
+        if 'booking_id' in locals() and booking_id:
+            await state.clear()
+        await callback.answer()
+
+async def notify_admin_on_booking(callback: CallbackQuery, data: dict, booking_id: int, config: dict, admin_bot: Bot):
+    """Отправляет уведомление администраторам о новой записи."""
+    admin_ids = config.get('admin_ids', [])
+    if not admin_ids:
+        return
+
+    notification_bot = admin_bot if admin_bot else callback.bot
+    user = callback.from_user
+    user_mention = f"@{user.username}" if user.username else user.full_name
+    booking_datetime = datetime.fromisoformat(data.get('booking_datetime'))
+
+    admin_text = (
+        f"🔔 <b>НОВАЯ ЗАПИСЬ</b> 🔔\n\n"
+        f"<b>Клиент:</b> {data.get('name')}, {user_mention} (ID: `{user.id}`)\n"
+        f"<b>Телефон:</b> `{data.get('phone')}`\n\n"
+        f"<b>Услуга:</b> {data.get('service_name')}\n"
+        f"<b>Мастер:</b> {data.get('master_name', 'Любой')}\n"
+        f"<b>Дата и время:</b> {booking_datetime.strftime('%d.%m.%Y в %H:%M')}\n"
+    )
+    if data.get('comment'):
+        admin_text += f"<b>Комментарий:</b> {data.get('comment')}\n"
+    
+    try:
+        for admin_id in admin_ids:
+            await notification_bot.send_message(admin_id, admin_text)
+    except Exception as e:
+        logger.error(f"Failed to send booking notification to admin {admin_id}: {e}")
+
+
+@router.callback_query(BookingState.confirmation, F.data == "cancel_booking_process")
+async def cancel_booking_process_callback(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Отменяет процесс бронирования на этапе подтверждения."""
+    await state.clear()
+    cancel_message = config.get('messages', {}).get('booking_cancelled', "Запись отменена.")
+    await callback.message.edit_text(cancel_message)
+    await callback.answer()
+
+=== FILE: handlers/booking/contact.py ===
+"""
+Обработчики для ввода контактной информации.
+"""
+
+import logging
+from aiogram import Router, F
+from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+
+from states.booking import BookingState
+from .confirmation import show_confirmation
+
+logger = logging.getLogger(__name__)
+
+router = Router()
+
+async def request_contact_info(callback_or_message, state: FSMContext, db_manager):
+    """Asks the user for their name and phone number."""
+    message = callback_or_message if isinstance(callback_or_message, Message) else callback_or_message.message
+    user_id = message.from_user.id
+    
+    # Check if user contact info already exists in the database
+    user_info = db_manager.get_user_contact_info(user_id)
+    
+    if user_info and user_info.get('name') and user_info.get('phone'):
+        await state.update_data(name=user_info['name'], phone=user_info['phone'])
+        await show_confirmation(message, state)
+    else:
+        await message.answer("Пожалуйста, введите ваше имя:")
+        await state.set_state(BookingState.input_name)
+
+@router.message(BookingState.input_name, F.text)
+async def name_entered(message: Message, state: FSMContext):
+    """Handles the user entering their name."""
+    await state.update_data(name=message.text)
+    logger.info(f"User {message.from_user.id} entered name: {message.text}")
+    await message.answer("Теперь, пожалуйста, введите ваш номер телефона (например, +79123456789):")
+    await state.set_state(BookingState.input_phone)
+
+@router.message(BookingState.input_phone, F.text)
+async def phone_entered(message: Message, state: FSMContext, db_manager):
+    """Handles the user entering their phone number."""
+    # Basic validation could be added here
+    await state.update_data(phone=message.text)
+    logger.info(f"User {message.from_user.id} entered phone: {message.text}")
+    
+    # Save/update user contact info in the database
+    user_id = message.from_user.id
+    data = await state.get_data()
+    db_manager.update_user_contact_info(user_id, data.get('name'), data.get('phone'))
+
+    await message.answer("Вы хотите добавить комментарий к записи? (необязательно)")
+    await state.set_state(BookingState.input_comment)
+
+@router.message(BookingState.input_comment, F.text)
+async def comment_entered(message: Message, state: FSMContext):
+    """Handles the user entering a comment."""
+    await state.update_data(comment=message.text)
+    logger.info(f"User {message.from_user.id} entered comment: {message.text}")
+    await show_confirmation(message, state)
+
+=== FILE: handlers/booking/date.py ===
+"""
+Обработчики для выбора даты.
+"""
+
+import logging
+from datetime import date, timedelta
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
+
+from states.booking import BookingState
+from ..keyboards import get_calendar_keyboard # assuming keyboards are in handlers/booking/keyboards.py
+from .time import show_time_slots
+
+logger = logging.getLogger(__name__)
+
+router = Router()
+
+async def proceed_to_date_selection(callback_or_message, state: FSMContext, config: dict, service: dict):
+    """Displays the calendar for date selection."""
+    today = date.today()
+    
+    # Decide if we're editing a message or sending a new one
+    message = callback_or_message if isinstance(callback_or_message, Message) else callback_or_message.message
+
+    keyboard = get_calendar_keyboard(year=today.year, month=today.month)
+    await message.edit_text(f"📅 Выберите дату для услуги «{service['name']}»:", reply_markup=keyboard)
+    await state.set_state(BookingState.choosing_date)
+
+@router.callback_query(BookingState.choosing_date, F.data.startswith("calendar:"))
+async def calendar_callback_handler(callback: CallbackQuery, state: FSMContext, db_manager, config: dict):
+    """Handles calendar navigation and date selection."""
+    action, year_str, month_str, day_str = callback.data.split(':')
+    year, month, day = int(year_str), int(month_str), int(day_str)
+
+    if action == "ignore":
+        await callback.answer()
+        return
+
+    if action == "prev-month":
+        prev_month_date = date(year, month, 1) - timedelta(days=1)
+        keyboard = get_calendar_keyboard(year=prev_month_date.year, month=prev_month_date.month)
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
+        await callback.answer()
+        return
+
+    if action == "next-month":
+        next_month_date = date(year, month, 1) + timedelta(days=31)
+        keyboard = get_calendar_keyboard(year=next_month_date.year, month=next_month_date.month)
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
+        await callback.answer()
+        return
+
+    if action == "select-day":
+        selected_date = date(year, month, day)
+        today = date.today()
+        if selected_date < today:
+            await callback.answer("Нельзя выбрать прошедшую дату!", show_alert=True)
+            return
+        
+        await state.update_data(booking_date=selected_date.isoformat())
+        logger.info(f"User {callback.from_user.id} selected date: {selected_date.isoformat()}")
+        
+        # Proceed to time selection
+        await show_time_slots(callback, state, config, db_manager, selected_date)
+        await callback.answer()
+
+=== FILE: handlers/booking/keyboards.py ===
+"""
+Функции для создания клавиатур в процессе бронирования и главного меню.
+"""
+
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from calendar import monthcalendar
+from datetime import date
+
+def get_main_keyboard() -> ReplyKeyboardMarkup:
+    """Создание главной клавиатуры с навигацией"""
+    buttons = [
+        [
+            KeyboardButton(text="📅 Записаться"),
+            KeyboardButton(text="📋 Мои записи")
+        ],
+        [
+            KeyboardButton(text="💅 Услуги и цены"),
+            KeyboardButton(text="👩‍🎨 Мастера")
+        ],
+        [
+            KeyboardButton(text="🎁 Акции"),
+            KeyboardButton(text="ℹ️ О нас")
+        ],
+        [
+            KeyboardButton(text="❓ FAQ"),
+            KeyboardButton(text="◀️ Назад"),
+        ],
+    ]
+
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True
+    )
+
+def get_info_keyboard(add_booking_button: bool = True) -> InlineKeyboardMarkup:
+    """Создает стандартную inline-клавиатуру для информационных разделов."""
+    buttons = []
+    if add_booking_button:
+        buttons.append([InlineKeyboardButton(text="📅 Записаться", callback_data="start_booking")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_main_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_categories_keyboard(categories: list) -> InlineKeyboardMarkup:
+    """Creates a keyboard with service categories."""
+    buttons = []
+    for category in categories:
+        buttons.append([InlineKeyboardButton(text=category, callback_data=f"cat:{category}")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_services_keyboard(services: list, category_name: str = None) -> InlineKeyboardMarkup:
+    """Creates a keyboard with services."""
+    buttons = []
+    for service in services:
+        button_text = f"{service['name']} - {service['price']}"
+        buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"srv:{service['id']}")])
+    # Add a back button if inside a category
+    if category_name:
+        buttons.append([InlineKeyboardButton(text="◀️ Назад к категориям", callback_data="back_to_categories")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_masters_keyboard(masters: list) -> InlineKeyboardMarkup:
+    """Creates a keyboard for selecting a master."""
+    buttons = []
+    for master in masters:
+        buttons.append([InlineKeyboardButton(text=master['name'], callback_data=f"master:{master['id']}")])
+    buttons.append([InlineKeyboardButton(text="Любой свободный мастер", callback_data="master:any")])
+    # Add a back button to go back to service selection
+    buttons.append([InlineKeyboardButton(text="◀️ Назад к услугам", callback_data="back_to_services")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_calendar_keyboard(year: int, month: int) -> InlineKeyboardMarkup:
+    """Creates a calendar keyboard for a given month and year."""
+    buttons = []
+    # Month and year header
+    header = date(year, month, 1).strftime('%B %Y')
+    buttons.append([InlineKeyboardButton(text=header, callback_data="calendar:ignore:0:0:0")])
+    # Day of the week headers
+    week_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    buttons.append([InlineKeyboardButton(text=day, callback_data="calendar:ignore:0:0:0") for day in week_days])
+
+    # Calendar days
+    month_cal = monthcalendar(year, month)
+    for week in month_cal:
+        row = []
+        for day in week:
+            if day == 0:
+                row.append(InlineKeyboardButton(text=" ", callback_data="calendar:ignore:0:0:0"))
+            else:
+                row.append(InlineKeyboardButton(text=str(day), callback_data=f"calendar:select-day:{year}:{month}:{day}"))
+        buttons.append(row)
+
+    # Navigation buttons
+    nav_row = [
+        InlineKeyboardButton(text="<", callback_data=f"calendar:prev-month:{year}:{month}:1"),
+        InlineKeyboardButton(text=">", callback_data=f"calendar:next-month:{year}:{month}:1")
+    ]
+    buttons.append(nav_row)
+    
+    # Back button
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_master_choice")])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_time_slots_keyboard(slots: list) -> InlineKeyboardMarkup:
+    """Creates a keyboard with available time slots."""
+    buttons = []
+    row = []
+    for slot in slots:
+        row.append(InlineKeyboardButton(text=slot, callback_data=f"time:{slot}"))
+        if len(row) == 4: # Adjust number of columns here
+            buttons.append(row)
+            row = []
+    if row: # Add the last row if it's not full
+        buttons.append(row)
+        
+    # Back button
+    buttons.append([InlineKeyboardButton(text="◀️ Назад к выбору даты", callback_data="back_to_date_choice")])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+=== FILE: handlers/booking/master.py ===
+"""
+Обработчики для выбора мастера.
+"""
+
+import logging
+from aiogram import Router, F
+from aiogram.types import CallbackQuery
+from aiogram.fsm.context import FSMContext
+
+from states.booking import BookingState
+from ..keyboards import get_masters_keyboard # assuming keyboards are in handlers/booking/keyboards.py
+from ..utils import get_masters_for_service, get_master_by_id # assuming utils are in handlers/booking/utils.py
+from .date import proceed_to_date_selection
+
+logger = logging.getLogger(__name__)
+
+router = Router()
+
+async def show_masters_for_service(callback_or_message, state: FSMContext, config: dict, service: dict):
+    """Displays the list of masters available for a given service."""
+    masters = get_masters_for_service(config, service['id'])
+    
+    # Decide if we're editing a message or sending a new one
+    message = callback_or_message if isinstance(callback_or_message, Message) else callback_or_message.message
+
+    if not masters:
+        # No specific masters for this service, skip to date selection
+        await state.update_data(master_id=None, master_name=None)
+        await proceed_to_date_selection(callback_or_message, state, config, service)
+        return
+
+    keyboard = get_masters_keyboard(masters)
+    await message.edit_text(f"Выберите мастера для услуги «{service['name']}»:", reply_markup=keyboard)
+    await state.set_state(BookingState.choosing_master)
+
+@router.callback_query(BookingState.choosing_master, F.data.startswith("master:"))
+async def master_selected(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Handles the selection of a master."""
+    master_id = callback.data.split(":", 1)[1]
+    
+    if master_id == 'any':
+        await state.update_data(master_id=None, master_name="Любой")
+        master_name = "Любой мастер"
+    else:
+        master = get_master_by_id(config, master_id)
+        if not master:
+            await callback.answer("Мастер не найден", show_alert=True)
+            return
+        await state.update_data(master_id=master_id, master_name=master['name'])
+        master_name = master['name']
+
+    logger.info(f"User {callback.from_user.id} selected master: {master_name}")
+
+    service_id = (await state.get_data()).get('service_id')
+    service = next((s for s in config.get('services', []) if s['id'] == service_id), None)
+
+    await proceed_to_date_selection(callback, state, config, service)
+    await callback.answer()
+=== FILE: handlers/booking/router_nav.py ===
+"""
+Центральный маршрутизатор для навигации "Назад" в процессе бронирования.
+Этот модуль устраняет циклические зависимости и сильную связанность.
+"""
+
+import logging
+from datetime import datetime
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
+
+from states.booking import BookingState
+
+# Импортируем все функции, которые рендерят шаги бронирования
+from .category import start_booking_flow
+from .service import show_services_list
+from .master import show_masters_for_service
+from .date import proceed_to_date_selection
+from .time import show_time_slots
+from .contact import request_contact_info
+
+logger = logging.getLogger(__name__)
+router = Router()
+
+async def get_service_from_data(config: dict, data: dict):
+    """Вспомогательная функция для получения услуги из данных состояния."""
+    service_id = data.get('service_id')
+    return next((s for s in config.get('services', []) if s['id'] == service_id), None)
+
+async def navigate_back(callback_or_message: Message | CallbackQuery, state: FSMContext, config: dict, db_manager):
+    """
+    Единая функция-маршрутизатор для навигации назад.
+    Она определяет предыдущий шаг на основе текущего состояния FSM.
+    """
+    current_state = await state.get_state()
+    data = await state.get_data()
+    message = callback_or_message if isinstance(callback_or_message, Message) else callback_or_message.message
+
+    # Карта состояний для навигации назад
+    back_handlers = {
+        BookingState.choosing_service: start_booking_flow,
+        BookingState.choosing_master: lambda m, s, c, db: show_services_list(m, s, c, data.get('category_name')),
+        BookingState.choosing_date: lambda m, s, c, db: show_masters_for_service(m, s, c, get_service_from_data(c, data)),
+        BookingState.choosing_time: lambda m, s, c, db: proceed_to_date_selection(m, s, c, get_service_from_data(c, data)),
+        BookingState.input_name: lambda m, s, c, db: show_time_slots(m, s, c, db, datetime.fromisoformat(data.get('booking_date')).date()),
+        BookingState.input_phone: request_contact_info,
+        BookingState.input_comment: request_contact_info,
+        BookingState.confirmation: request_contact_info,
+    }
+
+    handler = back_handlers.get(current_state)
+
+    if handler:
+        # Адаптируем вызов в зависимости от того, требует ли лямбда get_service_from_data
+        if "lambda" in repr(handler):
+             # Если это лямбда, то она уже содержит нужные данные из state
+            await handler(message, state, config, db_manager)
+        else:
+             await handler(message, state, config)
+    else:
+        # Если состояние не найдено, отменяем и выходим в главное меню
+        # Прямой импорт заменен на получение из app-контекста
+        from handlers.start import show_main_menu
+        await state.clear()
+        await show_main_menu(message, config)
+
+
+# --- Обработчики для inline-кнопок "Назад" ---
+
+@router.callback_query(F.data == "back_to_categories")
+async def handle_back_to_categories(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Обработчик для кнопки 'Назад к категориям'."""
+    await start_booking_flow(callback, state, config)
+    await callback.answer()
+
+@router.callback_query(F.data == "back_to_services")
+async def handle_back_to_services(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Обработчик для кнопки 'Назад к услугам'."""
+    data = await state.get_data()
+    await show_services_list(callback, state, config, data.get('category_name'))
+    await callback.answer()
+
+@router.callback_query(F.data == "back_to_master_choice")
+async def handle_back_to_master_choice(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Обработчик для кнопки 'Назад к выбору мастера'."""
+    data = await state.get_data()
+    service = await get_service_from_data(config, data)
+    await show_masters_for_service(callback, state, config, service)
+    await callback.answer()
+
+@router.callback_query(F.data == "back_to_date_choice")
+async def handle_back_to_date_choice(callback: CallbackQuery, state: FSMContext, config: dict):
+    """Обработчик для кнопки 'Назад к выбору даты'."""
+    data = await state.get_data()
+    service = await get_service_from_data(config, data)
+    await proceed_to_date_selection(callback, state, config, service)
+    await callback.answer()
+
+=== FILE: handlers/booking/save.py ===
+"""
+Сохранение в БД и уведомления.
+"""
+
+import logging
+from datetime import datetime
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from states.booking import BookingState
+from utils.notify import send_order_to_admins
+from .keyboards import get_time_slots_keyboard
+
+logger = logging.getLogger(__name__)
+
+router = Router()
+
+@router.callback_query(BookingState.confirmation, F.data == "confirm_booking")
+async def confirm_booking_and_save(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
+    data = await state.get_data()
+    if data.get('booking_confirmed'):
+        await callback.answer("Запись уже создана", show_alert=True)
+        return
+
+    await state.update_data(booking_confirmed=True)
+
+    try:
+        order_id = await save_booking_to_db(data, callback.from_user.id, db_manager)
+        db_manager.add_user(user_id=callback.from_user.id, username=callback.from_user.username, first_name=callback.from_user.first_name, last_name=callback.from_user.last_name)
+        logger.info(f"Booking confirmed: order_id={order_id}, user_id={callback.from_user.id}")
+
+        await send_success_message(callback, state, config, db_manager, order_id)
+        await send_admin_notification(callback, config, data, order_id, db_manager)
+
+        await state.clear()
+        await callback.answer("✅ Запись создана!")
+
+    except ValueError as e:
+        logger.warning(f"Slot already taken for user {callback.from_user.id}: {e}")
+        await state.update_data(booking_confirmed=False)
+        await callback.answer("❌ К сожалению, это время уже занято. Выберите другое.", show_alert=True)
+        await return_to_time_selection(callback, state, config, db_manager)
+    except Exception as e:
+        logger.exception(f"Error creating booking for user {callback.from_user.id}: {e}")
+        await state.update_data(booking_confirmed=False)
+        await callback.answer("❌ Произошла ошибка. Попробуйте ещё раз.", show_alert=True)
+        await state.clear()
+
+async def save_booking_to_db(data: dict, user_id: int, db_manager) -> int:
+    return db_manager.add_order(
+        user_id=user_id,
+        service_id=data.get('service_id'),
+        service_name=data.get('service_name'),
+        price=data.get('price'),
+        client_name=data.get('client_name'),
+        phone=data.get('phone'),
+        comment=data.get('comment'),
+        booking_date=data.get('booking_date'),
+        booking_time=data.get('booking_time'),
+        master_id=data.get('master_id')
+    )
+
+async def send_success_message(callback: CallbackQuery, state: FSMContext, config: dict, db_manager, order_id: int):
+    data = await state.get_data()
+    try:
+        date_formatted = datetime.fromisoformat(data.get('booking_date')).strftime('%d.%m.%Y')
+    except Exception:
+        date_formatted = data.get('booking_date')
+
+    success_text = config.get('messages', {}).get('success', "✅ Запись #{id} успешно создана!").format(id=order_id, date=date_formatted, time=data.get('booking_time'))
+    master_text = f"\n👤 Мастер: {data.get('master_name')}" if data.get('master_name') else ""
+    await callback.message.edit_text(f"{success_text}\n\n📅 {date_formatted} в {data.get('booking_time')}\n💇 {data.get('service_name')} — {data.get('price')}₽{master_text}\n\nЖдём вас! 💫")
+    
+    from handlers.start import get_main_keyboard
+    user_bookings = db_manager.get_user_bookings(callback.from_user.id, active_only=True)
+    if user_bookings:
+        profile_text = "📋 <b>ВАШИ ЗАПИСИ</b>\n" + "━"*20 + "\n\n"
+        buttons = []
+        for booking in user_bookings:
+            # ... (formatting logic for each booking) ...
+            buttons.append([InlineKeyboardButton(text=f"✏️ Изменить запись #{booking['id']}", callback_data=f"edit_booking:{booking['id']}")])
+            buttons.append([InlineKeyboardButton(text=f"🗑 Отменить запись #{booking['id']}", callback_data=f"cancel_order:{booking['id']}")])
+        await callback.message.answer(profile_text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    await callback.message.answer("🏠 Главное меню", reply_markup=get_main_keyboard())
+
+async def send_admin_notification(callback: CallbackQuery, config: dict, data: dict, order_id: int, db_manager):
+    try:
+        await send_order_to_admins(
+            bot=callback.message.bot,
+            admin_ids=config.get('admin_ids', []),
+            order_data={
+                'order_id': order_id,
+                'user_id': callback.from_user.id,
+                'service_name': data.get('service_name'),
+                'price': data.get('price'),
+                'booking_date': data.get('booking_date'),
+                'booking_time': data.get('booking_time'),
+                'client_name': data.get('client_name'),
+                'phone': data.get('phone'),
+                'username': callback.from_user.username,
+                'master_name': data.get('master_name')
+            },
+            business_name=config.get('business_name', ''),
+            db_manager=db_manager
+        )
+    except Exception as e:
+        logger.error(f"Failed to notify admins: {e}")
+
+async def return_to_time_selection(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
+    data = await state.get_data()
+    keyboard = get_time_slots_keyboard(config, db_manager, data.get('booking_date'), master_id=data.get('master_id'))
+    await callback.message.edit_text(f"📅 {data.get('booking_date')}\n\n⚠️ Выбранное время занято. Выберите другое:", reply_markup=keyboard)
+    await state.set_state(BookingState.choosing_time)
+
+=== FILE: handlers/booking/service.py ===
+"""
+Обработчики для выбора услуги.
+"""
+import logging
+from aiogram import Router
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
+from states.booking import BookingState
+from .keyboards import get_services_keyboard
+from .master import show_masters_for_service
+
+logger = logging.getLogger(__name__)
+
+router = Router()
+
+async def show_services_list(callback_or_message: Message | CallbackQuery, state: FSMContext, config: dict, category_name: str = None):
+    """Показывает список услуг, опционально фильтруя по категории."""
+    services = config.get('services', [])
+    message = callback_or_message if isinstance(callback_or_message, Message) else callback_or_message.message
+
+    if category_name:
+        # Фильтруем услуги по выбранной категории
+        services_in_category = [s for s in services if s.get('category') == category_name]
+    else:
+        # Показываем все услуги, если категории не используются
+        services_in_category = services
+
+    if not services_in_category:
+        await message.answer("В этой категории нет доступных услуг. Попробуйте выбрать другую.")
+        return
+
+    await message.answer(
+        text=config.get('messages', {}).get('service_selection', "Выберите услугу:"),
+        reply_markup=get_services_keyboard(services_in_category, category_name)
+    )
+    await state.set_state(BookingState.choosing_master)
+
+=== FILE: handlers/booking/time.py ===
+"""
+Обработчики для выбора времени.
+"""
+
+import logging
+from datetime import datetime, time, date
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
+
+from states.booking import BookingState
+from ..keyboards import get_time_slots_keyboard
+from .contact import request_contact_info
+
+logger = logging.getLogger(__name__)
+
+router = Router()
+
+async def show_time_slots(callback_or_message, state: FSMContext, config: dict, db_manager, selected_date: date):
+    """Displays available time slots for the selected date."""
+    data = await state.get_data()
+    master_id = data.get('master_id')
+    
+    # Decide if we're editing a message or sending a new one
+    message = callback_or_message if isinstance(callback_or_message, Message) else callback_or_message.message
+
+    # Fetch busy slots from the database
+    busy_slots = db_manager.get_busy_slots(selected_date.isoformat(), master_id)
+
+    # Generate all possible time slots based on config
+    work_hours_str = config.get('work_hours', {}).get(selected_date.strftime('%A').lower(), "09:00-18:00")
+    start_work_str, end_work_str = work_hours_str.split('-')
+    start_work_time = datetime.strptime(start_work_str, '%H:%M').time()
+    end_work_time = datetime.strptime(end_work_str, '%H:%M').time()
+    interval_minutes = config.get('booking_settings', {}).get('time_slot_interval', 30)
+
+    all_slots = []
+    current_time = datetime.combine(selected_date, start_work_time)
+    end_datetime = datetime.combine(selected_date, end_work_time)
+
+    while current_time < end_datetime:
+        all_slots.append(current_time.strftime('%H:%M'))
+        current_time += timedelta(minutes=interval_minutes)
+
+    # Filter out busy slots
+    available_slots = [slot for slot in all_slots if slot not in busy_slots]
+    
+    if not available_slots:
+        await message.edit_text("На выбранную дату нет свободных слотов. Пожалуйста, выберите другую дату.")
+        # Here you might want to send the calendar back
+        # from .date import proceed_to_date_selection
+        # await proceed_to_date_selection(callback_or_message, state, config, ...)
+        return
+
+    keyboard = get_time_slots_keyboard(available_slots)
+    await message.edit_text(f"🕒 Выберите время на {selected_date.strftime('%d.%m.%Y')}:", reply_markup=keyboard)
+    await state.set_state(BookingState.choosing_time)
+
+@router.callback_query(BookingState.choosing_time, F.data.startswith("time:"))
+async def time_selected(callback: CallbackQuery, state: FSMContext, db_manager):
+    """Handles the selection of a time slot."""
+    selected_time_str = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    booking_date = date.fromisoformat(data.get('booking_date'))
+    
+    # Combine date and time to create a full datetime object
+    booking_datetime = datetime.combine(booking_date, time.fromisoformat(selected_time_str))
+    
+    await state.update_data(booking_datetime=booking_datetime.isoformat())
+    logger.info(f"User {callback.from_user.id} selected time: {booking_datetime.isoformat()}")
+    
+    # Proceed to contact info request
+    await request_contact_info(callback, state, db_manager)
+    await callback.answer()
+=== FILE: handlers/booking/utils.py ===
+"""
+Вспомогательные функции для процесса бронирования.
+"""
+
+def get_categories_from_services(services: list) -> list:
+    """Extracts unique categories from a list of services."""
+    categories = []
+    for service in services:
+        if service.get('category') and service['category'] not in categories:
+            categories.append(service['category'])
+    return categories
+
+def get_services_by_category(services: list, category_name: str) -> list:
+    """Filters services by a given category name."""
+    return [s for s in services if s.get('category') == category_name]
+
+def get_masters_for_service(config: dict, service_id: str) -> list:
+    """Gets a list of masters who provide a specific service."""
+    staff_list = config.get('staff', {}).get('list', [])
+    return [master for master in staff_list if service_id in master.get('services', [])]
+
+def get_master_by_id(config: dict, master_id: str) -> dict or None:
+    """Finds a master by their ID."""
+    return next((m for m in config.get('staff', {}).get('list', []) if m['id'] == master_id), None)
+
+=== FILE: main.py ===
+
+import argparse
+import asyncio
+import logging
+import os
+from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher, BaseMiddleware
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import TelegramObject, Message
+from typing import Any, Awaitable, Callable, Dict
+
+# Загружаем переменные окружения из .env
+load_dotenv()
+
+# Импорты из проекта
+from utils.db import DatabaseManager
+from utils.logger import setup_logger
+from utils.config_loader import load_config
+
+# Импортируем handlers
+from handlers import all_routers
+
+
+async def watch_config_updates(config_path: str, config: dict, poll_interval_seconds: float = 3.0):
+    """
+    Отслеживает изменения в директории с конфигурационными файлами.
+    ОПТИМИЗИРОВАНО: файлы читаются только если изменился mtime или версия.
+    """
+    last_mtime = None
+    last_version = config.get('config_version', 0)
+
+    def get_latest_mtime(path: str):
+        try:
+            files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.json')]
+            if not files:
+                return None
+            return max(os.path.getmtime(f) for f in files)
+        except Exception:
+            return None
+
+    last_mtime = get_latest_mtime(config_path)
+
+    while True:
+        await asyncio.sleep(poll_interval_seconds)
+
+        current_mtime = get_latest_mtime(config_path)
+        if current_mtime is None:
+            continue
+
+        if last_mtime is not None and current_mtime == last_mtime:
+            continue
+
+        try:
+            new_config = load_config(config_path)
+        except Exception as e:
+            logging.error(f"❌ Не удалось перезагрузить конфигурацию: {e}")
+            last_mtime = current_mtime
+            continue
+
+        new_version = new_config.get('config_version', 0)
+
+        if new_version == last_version:
+            last_mtime = current_mtime
+            continue
+
+        config.clear()
+        config.update(new_config)
+
+        last_mtime = current_mtime
+        last_version = new_version
+        logging.info(f"🔄 Конфигурация обновлена (config_version={last_version})")
+
+
+class ConfigMiddleware(BaseMiddleware):
+    """Middleware для передачи config, db_manager и admin_bot в handlers"""
+    def __init__(self, config: dict, db_manager, admin_bot: Bot = None):
+        super().__init__()
+        self.config = config
+        self.db_manager = db_manager
+        self.admin_bot = admin_bot
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any]
+    ) -> Any:
+        data['config'] = self.config
+        data['messages'] = self.config.get('messages', {})
+        data['db_manager'] = self.db_manager
+        data['admin_bot'] = self.admin_bot
+        return await handler(event, data)
+
+
+async def main():
+    setup_logger()
+    logger = logging.getLogger(__name__)
+
+    parser = argparse.ArgumentParser(description='Telegram Business Bot V2.0')
+    parser.add_argument('--config-dir', type=str, default='config',
+                        help='Путь к директории с JSON файлами конфигурации.')
+    args = parser.parse_args()
+
+    try:
+        config = load_config(args.config_dir)
+        logger.info(f"✅ Конфигурация загружена: {config.get('business_name', 'Неизвестно')}")
+    except Exception as e:
+        logger.critical(f"❌ Не удалось загрузить конфигурацию из '{args.config_dir}': {e}", exc_info=True)
+        return
+
+    bot_token = os.getenv('BOT_TOKEN') or config.get('bot_token')
+    
+    if not bot_token:
+        logger.critical("❌ BOT_TOKEN не найден ни в .env, ни в конфиге!")
+        return
+
+    business_slug = config.get('business_slug', 'default_business')
+    db_manager = DatabaseManager(business_slug)
+    
+    try:
+        logger.info(f"✅ База данных инициализирована: db_{business_slug}.sqlite")
+    except Exception as e:
+        logger.critical(f"❌ Ошибка инициализации БД: {e}", exc_info=True)
+        return
+
+    bot = Bot(
+        token=bot_token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
+
+    admin_bot = None
+    admin_token = os.getenv('ADMIN_BOT_TOKEN')
+    if admin_token:
+        admin_bot = Bot(
+            token=admin_token,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+        )
+        logger.info("✅ Админ-бот для уведомлений инициализирован")
+    else:
+        logger.warning("⚠️ ADMIN_BOT_TOKEN не найден - уведомления будут через клиентского бота")
+
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
+
+    dp.update.middleware(ConfigMiddleware(config, db_manager, admin_bot))
+
+    watcher_task = asyncio.create_task(watch_config_updates(args.config_dir, config))
+
+    dp.include_router(all_routers)
+    
+    from aiogram.filters import StateFilter
+    from aiogram import F
+
+    known_menu_texts = {
+        "🏠 Меню", "◀️ Назад", "📅 Записаться", "📋 Мои записи",
+        "💅 Услуги и цены", "👩‍🎨 Мастера", "🎁 Акции", "ℹ️ О нас", "❓ FAQ",
+        "📍 Адрес", "📅 Записаться / Заказать", "❓ Часто задаваемые вопросы",
+        "🏠 Главное меню",
+    }
+
+    @dp.message(StateFilter(None), F.text, ~F.text.startswith("/"), ~F.text.in_(known_menu_texts))
+    async def unknown_message_handler(message: Message):
+        from handlers.start import get_main_keyboard
+        await message.answer(
+            "Я не понял ваш запрос. Воспользуйтесь кнопками меню ниже:",
+            reply_markup=get_main_keyboard()
+        )
+
+    logger.info(f"🚀 Бот '{config.get('business_name', 'Неизвестно')}' запущен!")
+    logger.info(f"📂 Конфигурация из директории: {args.config_dir}")
+    logger.info(f"💾 База данных: db_{business_slug}.sqlite")
+    logger.info("💾 Хранилище FSM: MemoryStorage")
+
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        await dp.start_polling(bot)
+    except KeyboardInterrupt:
+        logger.info("Получено прерывание с клавиатуры")
+    except Exception as e:
+        logger.error(f"❌ Ошибка во время работы: {e}", exc_info=True)
+    finally:
+        watcher_task.cancel()
+        try:
+            await watcher_task
+        except asyncio.CancelledError:
+            pass
+        db_manager.close()
+        await bot.session.close()
+        if admin_bot:
+            await admin_bot.session.close()
+        logger.info("🛑 Бот остановлен")
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
+
+=== FILE: utils/db/__init__.py ===
+import random
+
+class DatabaseManager:
+    def __init__(self, business_slug):
+        self.business_slug = business_slug
+        # Здесь будет инициализация базы данных
+        pass
+
+    def get_order_by_id(self, order_id):
+        # Заглушка для получения заказа
+        return None
+
+    def check_slot_availability(self, date, time, exclude_order_id=None):
+        # Заглушка для проверки доступности слота (общая)
+        return True
+
+    def check_slot_availability_for_master(self, date, time, master_id, exclude_order_id=None):
+        # Заглушка для проверки доступности слота у мастера
+        return True
+
+    def check_slot_availability_excluding(self, date, time, order_id):
+        # Заглушка для проверки доступности слота при переносе
+        return True
+
+    def get_user_bookings(self, user_id, active_only=True):
+        # Заглушка для получения записей пользователя
+        return []
+
+    def get_last_client_details(self, user_id):
+        # Заглушка для получения последних данных клиента
+        return None
+
+    def add_order(self, user_id, service_id, service_name, price, client_name, phone, comment, booking_date, booking_time, master_id):
+        # Заглушка для добавления заказа
+        return random.randint(1000, 9999)
+
+    def add_user(self, user_id, username, first_name, last_name):
+        # Заглушка для добавления пользователя
+        pass
+
+    def get_master_and_service_ids(self, master_id_str, service_id_str):
+        # Заглушка для получения ID мастера и услуги
+        try:
+            return int(master_id_str), int(service_id_str)
+        except (ValueError, TypeError):
+            return 1, 1 # Возвращаем фиктивные ID в случае ошибки
+
+=== FILE: utils/db/booking_queries.py ===
+
+import sqlite3
+import logging
+from datetime import datetime
+from utils.privacy import safe_log_order_creation
+
+logger = logging.getLogger(__name__)
+
+class BookingQueries:
+
+    def __init__(self, db_connection):
+        self.connection = db_connection
+
+    def _ensure_connection(self):
+        if not self.connection:
+            raise RuntimeError("Database not initialized.")
+        try:
+            self.connection.execute("SELECT 1")
+        except sqlite3.Error:
+            raise RuntimeError("Database connection lost.")
+
+    def add_order(self, user_id: int, service_id: str, service_name: str, price: int,
+                  client_name: str, phone: str, comment: str = None,
+                  booking_date: str = None, booking_time: str = None,
+                  master_id: str = None) -> int:
+        """Добавление заказа с защитой от race condition"""
+        try:
+            self._ensure_connection()
+            # Используем `with self.connection` для атомарной транзакции
+            with self.connection:
+                cursor = self.connection.cursor()
+                created_at = datetime.now().isoformat()
+
+                # Шаг 1: Проверяем доступность слота
+                if booking_date and booking_time:
+                    if master_id:
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM orders
+                            WHERE booking_date = ? AND booking_time = ? AND master_id = ? AND status = 'active'
+                        """, (booking_date, booking_time, master_id))
+                    else:
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM orders
+                            WHERE booking_date = ? AND booking_time = ? AND status = 'active'
+                        """, (booking_date, booking_time))
+                    
+                    if cursor.fetchone()[0] > 0:
+                        raise ValueError(f"Слот {booking_date} {booking_time} уже занят")
+
+                # Шаг 2: Создаем заказ (если слот свободен)
+                cursor.execute("""
+                    INSERT INTO orders (user_id, service_id, service_name, price, client_name, phone,
+                                       comment, booking_date, booking_time, master_id, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+                """, (user_id, service_id, service_name, price, client_name, phone,
+                      comment, booking_date, booking_time, master_id, created_at))
+
+                order_id = cursor.lastrowid
+
+            # Контекстный менеджер `with` автоматически сохраняет изменения (commit)
+            # или откатывает их (rollback) в случае ошибки.
+
+            log_msg = safe_log_order_creation(
+                user_id=user_id,
+                service_name=service_name,
+                client_name=client_name,
+                phone=phone,
+                booking_date=booking_date,
+                booking_time=booking_time
+            )
+            master_info = f", master_id={master_id}" if master_id else ""
+            logger.info(f"ID={order_id}, {log_msg}{master_info}")
+
+            return order_id
+
+        except ValueError as e:
+            # Ошибка (слот занят) будет обработана, транзакция автоматически отменена
+            logger.warning(f"Slot already taken: {e}")
+            raise
+        except sqlite3.Error as e:
+            # Ошибка БД, транзакция автоматически отменена
+            logger.error(f"Error adding order: {e}")
+            raise
+
+    def get_user_bookings(self, user_id: int, active_only: bool = True) -> list:
+        """Получение списка записей пользователя"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+
+            if active_only:
+                cursor.execute("""
+                    SELECT id, service_name, booking_date, booking_time, price, status,
+                           created_at, comment, client_name, phone, master_id
+                    FROM orders
+                    WHERE user_id = ? AND status = 'active'
+                      AND (booking_date IS NULL OR booking_date >= date('now'))
+                    ORDER BY COALESCE(booking_date, date('now')), booking_time
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT id, service_name, booking_date, booking_time, price, status,
+                           created_at, comment, client_name, phone, master_id
+                    FROM orders
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                """, (user_id,))
+
+            rows = cursor.fetchall()
+            bookings = []
+
+            for row in rows:
+                bookings.append({
+                    'id': row[0],
+                    'service_name': row[1],
+                    'booking_date': row[2],
+                    'booking_time': row[3],
+                    'price': row[4],
+                    'status': row[5],
+                    'created_at': row[6],
+                    'comment': row[7] if len(row) > 7 else None,
+                    'client_name': row[8] if len(row) > 8 else None,
+                    'phone': row[9] if len(row) > 9 else None,
+                    'master_id': row[10] if len(row) > 10 else None
+                })
+
+            return bookings
+
+        except sqlite3.Error as e:
+            logger.error(f"Error getting user bookings: {e}")
+            return []
+
+    def get_order_by_id(self, order_id: int) -> dict:
+        """Получение информации о заказе по ID"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT id, user_id, service_id, service_name, price, booking_date, booking_time,
+                       client_name, phone, comment, status, master_id
+                FROM orders
+                WHERE id = ?
+            """, (order_id,))
+
+            row = cursor.fetchone()
+
+            if row:
+                return {
+                    'id': row[0],
+                    'user_id': row[1],
+                    'service_id': row[2],
+                    'service_name': row[3],
+                    'price': row[4],
+                    'booking_date': row[5],
+                    'booking_time': row[6],
+                    'client_name': row[7],
+                    'phone': row[8],
+                    'comment': row[9],
+                    'status': row[10],
+                    'master_id': row[11] if len(row) > 11 else None
+                }
+
+            return None
+
+        except sqlite3.Error as e:
+            logger.error(f"Error getting order by ID: {e}")
+            return None
+
+    def update_order(self, order_id: int, **kwargs) -> bool:
+        """Обновление полей заказа"""
+        try:
+            self._ensure_connection()
+            set_parts = []
+            values = []
+            allowed_fields = ['service_id', 'service_name', 'price', 'booking_date',
+                            'booking_time', 'client_name', 'phone', 'comment', 'master_id']
+
+            for field, value in kwargs.items():
+                if field in allowed_fields:
+                    set_parts.append(f"{field} = ?")
+                    values.append(value)
+
+            if not set_parts:
+                logger.warning("No valid fields to update")
+                return False
+
+            values.append(order_id)
+            cursor = self.connection.cursor()
+            query = f"UPDATE orders SET {', '.join(set_parts)} WHERE id = ?"
+            cursor.execute(query, values)
+            self.connection.commit()
+
+            logger.info(f"Order {order_id} updated: {kwargs}")
+            return cursor.rowcount > 0
+
+        except sqlite3.Error as e:
+            logger.error(f"Error updating order: {e}")
+            return False
+
+    def cancel_order(self, order_id: int) -> bool:
+        """Отмена заказа"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                UPDATE orders SET status = 'cancelled' WHERE id = ?
+            """, (order_id,))
+
+            self.connection.commit()
+            logger.info(f"Order {order_id} cancelled")
+            return cursor.rowcount > 0
+
+        except sqlite3.Error as e:
+            logger.error(f"Error cancelling order: {e}")
+            return False
+
+    def get_active_orders_for_reminders(self) -> list:
+        """Получение активных заказов для системы напоминаний"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT id, user_id, service_name, booking_date, booking_time
+                FROM orders
+                WHERE status = 'active' AND booking_date >= date('now')
+                ORDER BY booking_date, booking_time
+            """)
+
+            rows = cursor.fetchall()
+            orders = []
+
+            for row in rows:
+                orders.append({
+                    'id': row[0],
+                    'user_id': row[1],
+                    'service_name': row[2],
+                    'booking_date': row[3],
+                    'booking_time': row[4]
+                })
+
+            return orders
+
+        except sqlite3.Error as e:
+            logger.error(f"Error getting orders for reminders: {e}")
+            return []
+
+=== FILE: utils/db/database.py ===
+
+import sqlite3
+import logging
+
+logger = logging.getLogger(__name__)
+
+LATEST_SCHEMA_VERSION = 3
+
+# Белый список таблиц для защиты от SQL injection
+ALLOWED_TABLES = {'orders', 'users', 'schema_migrations'}
+
+class Database:
+    def __init__(self, business_slug: str):
+        self.db_path = f"db_{business_slug}.sqlite"
+        self.connection = None
+
+    def _ensure_connection(self):
+        """Проверка и восстановление соединения с БД"""
+        if not self.connection:
+            raise RuntimeError("Database not initialized. Call init_db() first.")
+        try:
+            self.connection.execute("SELECT 1")
+        except sqlite3.Error:
+            logger.warning("DB connection lost, reconnecting...")
+            try:
+                self.connection.close()
+            except Exception:
+                pass
+            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
+            try:
+                self.connection.execute("PRAGMA foreign_keys = ON")
+                self.connection.execute("PRAGMA busy_timeout = 5000")
+                self.connection.execute("PRAGMA journal_mode = WAL")
+                self.connection.execute("PRAGMA synchronous = NORMAL")
+            except Exception:
+                pass
+
+    def _table_exists(self, cursor, table_name: str) -> bool:
+        cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+            (table_name,),
+        )
+        return cursor.fetchone() is not None
+
+    def _column_exists(self, cursor, table_name: str, column_name: str) -> bool:
+        if table_name not in ALLOWED_TABLES:
+            logger.error(f"Invalid table name: {table_name}")
+            return False
+        try:
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            cols = cursor.fetchall()
+            return any(row[1] == column_name for row in cols)
+        except sqlite3.Error:
+            return False
+
+    def _get_schema_version(self, cursor) -> int:
+        if not self._table_exists(cursor, 'schema_migrations'):
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER NOT NULL)"
+            )
+            cursor.execute("DELETE FROM schema_migrations")
+            cursor.execute("INSERT INTO schema_migrations(version) VALUES (0)")
+            return 0
+
+        cursor.execute("SELECT version FROM schema_migrations LIMIT 1")
+        row = cursor.fetchone()
+        if not row:
+            cursor.execute("INSERT INTO schema_migrations(version) VALUES (0)")
+            return 0
+        try:
+            return int(row[0] or 0)
+        except Exception:
+            return 0
+
+    def _set_schema_version(self, cursor, version: int) -> None:
+        cursor.execute("DELETE FROM schema_migrations")
+        cursor.execute("INSERT INTO schema_migrations(version) VALUES (?)", (int(version),))
+
+    def _apply_migrations(self, cursor) -> None:
+        current_version = self._get_schema_version(cursor)
+        target_version = LATEST_SCHEMA_VERSION
+
+        if current_version >= target_version:
+            return
+
+        logger.info(f"Applying DB migrations: {current_version} -> {target_version}")
+
+        if current_version < 1:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER UNIQUE NOT NULL,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    service_id TEXT NOT NULL,
+                    service_name TEXT NOT NULL,
+                    price INTEGER NOT NULL,
+                    client_name TEXT NOT NULL,
+                    phone TEXT NOT NULL,
+                    comment TEXT,
+                    booking_date TEXT,
+                    booking_time TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+
+            if self._table_exists(cursor, 'orders') and not self._column_exists(cursor, 'orders', 'comment'):
+                cursor.execute("ALTER TABLE orders ADD COLUMN comment TEXT")
+
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_booking_slot
+                ON orders(booking_date, booking_time, status)
+                """
+            )
+
+            self._set_schema_version(cursor, 1)
+
+        current_version = self._get_schema_version(cursor)
+        if current_version < 2:
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_orders_user_created
+                ON orders(user_id, created_at)
+                """
+            )
+
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_orders_status_booking_date
+                ON orders(status, booking_date)
+                """
+            )
+
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_users_user_id
+                ON users(user_id)
+                """
+            )
+
+            self._set_schema_version(cursor, 2)
+
+        current_version = self._get_schema_version(cursor)
+        if current_version < 3:
+            # Добавление колонки master_id для поддержки персонала
+            if not self._column_exists(cursor, 'orders', 'master_id'):
+                cursor.execute("ALTER TABLE orders ADD COLUMN master_id TEXT")
+                logger.info("Added master_id column to orders table")
+
+            # Индекс для поиска по мастеру
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_orders_master_id
+                ON orders(master_id, booking_date, booking_time)
+                """
+            )
+
+            self._set_schema_version(cursor, 3)
+
+        current_version = self._get_schema_version(cursor)
+        if current_version < target_version:
+            raise RuntimeError(
+                f"Database schema migration did not reach target version: {current_version} != {target_version}"
+            )
+
+    def init_db(self):
+        """Инициализация базы данных и создание таблиц"""
+        try:
+            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
+            try:
+                self.connection.execute("PRAGMA foreign_keys = ON")
+            except Exception:
+                pass
+            try:
+                self.connection.execute("PRAGMA busy_timeout = 5000")
+            except Exception:
+                pass
+            try:
+                self.connection.execute("PRAGMA journal_mode = WAL")
+            except Exception:
+                pass
+            try:
+                self.connection.execute("PRAGMA synchronous = NORMAL")
+            except Exception:
+                pass
+            cursor = self.connection.cursor()
+
+            self._apply_migrations(cursor)
+
+            self.connection.commit()
+            logger.info(f"Database initialized: {self.db_path}")
+
+            try:
+                cursor2 = self.connection.cursor()
+                version_after = self._get_schema_version(cursor2)
+                logger.info(f"Database schema version: {version_after}")
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.error(f"Database initialization/migration error: {e}")
+            logger.error(
+                "Database is not usable. Recommended actions:\n"
+                "1) Check DB schema/version: sudo bash deploy/linux/db_info.sh\n"
+                "2) Restore from backup:     sudo bash deploy/linux/restore.sh\n"
+                "3) If issue persists: check disk space/permissions for db_*.sqlite"
+            )
+            try:
+                if self.connection:
+                    self.connection.rollback()
+            except Exception:
+                pass
+            try:
+                if self.connection:
+                    self.connection.close()
+            except Exception:
+                pass
+            self.connection = None
+            raise
+
+    def close(self):
+        """Закрытие соединения с БД"""
+        if self.connection:
+            self.connection.close()
+            logger.info(f"Database connection closed: {self.db_path}")
+
+
+=== FILE: utils/db/staff_queries.py ===
+
+import sqlite3
+import logging
+
+from utils.db.booking_queries import BookingQueries
+
+logger = logging.getLogger(__name__)
+
+class StaffQueries(BookingQueries):
+
+    def __init__(self, db_connection):
+        super().__init__(db_connection)
+        self.connection = db_connection
+
+    def _ensure_connection(self):
+        if not self.connection:
+            raise RuntimeError("Database not initialized.")
+        try:
+            self.connection.execute("SELECT 1")
+        except sqlite3.Error:
+            raise RuntimeError("Database connection lost.")
+
+    def check_slot_availability(self, booking_date: str, booking_time: str, exclude_order_id: int = None) -> bool:
+        """Проверка доступности слота (опционально для конкретного мастера)"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+
+            query = """
+                SELECT COUNT(*) FROM orders
+                WHERE booking_date = ? AND booking_time = ? AND status = 'active'
+            """
+            params = [booking_date, booking_time]
+
+            if exclude_order_id:
+                query += " AND id != ?"
+                params.append(exclude_order_id)
+
+            cursor.execute(query, params)
+            count = cursor.fetchone()[0]
+            return count == 0
+
+        except sqlite3.Error as e:
+            logger.error(f"Error checking slot availability: {e}")
+            return False
+
+    def get_occupied_slots_for_master(self, booking_date: str, master_id: str) -> list:
+        """Получить список занятых слотов мастера на дату"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT booking_time FROM orders
+                WHERE booking_date = ? AND master_id = ? AND status = 'active'
+            """, (booking_date, master_id))
+
+            return [row[0] for row in cursor.fetchall()]
+
+        except sqlite3.Error as e:
+            logger.error(f"Error getting occupied slots for master: {e}")
+            return []
+
+    def check_slot_availability_for_master(self, booking_date: str, booking_time: str, master_id: str, exclude_order_id: int = None) -> bool:
+        """Проверка доступности слота для конкретного мастера (алиас)"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            query = """
+                SELECT COUNT(*) FROM orders
+                WHERE booking_date = ? AND booking_time = ? AND master_id = ? AND status = 'active'
+            """
+            params = [booking_date, booking_time, master_id]
+
+            if exclude_order_id:
+                query += " AND id != ?"
+                params.append(exclude_order_id)
+
+            cursor.execute(query, params)
+            count = cursor.fetchone()[0]
+            return count == 0
+        except sqlite3.Error as e:
+            logger.error(f"Error checking slot availability for master: {e}")
+            return False
+
+    def check_slot_availability_excluding(
+        self,
+        booking_date: str,
+        booking_time: str,
+        exclude_order_id: int
+    ) -> bool:
+        """
+        Проверяет, свободен ли слот (дата + время) для бронирования,
+        исключая из проверки существующий заказ exclude_order_id (при редактировании).
+        """
+        try:
+            self._ensure_connection()
+
+            # Получаем информацию о редактируемом заказе для определения мастера
+            order = self.get_order_by_id(exclude_order_id)
+            master_id = order.get('master_id') if order else None
+
+            cursor = self.connection.cursor()
+
+            if master_id:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM orders
+                    WHERE booking_date = ?
+                      AND booking_time = ?
+                      AND master_id = ?
+                      AND status = 'active'
+                      AND id != ?
+                """, (booking_date, booking_time, master_id, exclude_order_id))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM orders
+                    WHERE booking_date = ?
+                      AND booking_time = ?
+                      AND status = 'active'
+                      AND id != ?
+                """, (booking_date, booking_time, exclude_order_id))
+
+            count = cursor.fetchone()[0]
+            return count == 0
+
+        except sqlite3.Error as e:
+            logger.error(f"Error checking slot availability excluding order {exclude_order_id}: {e}")
+            return False
+
+=== FILE: utils/db/stats_queries.py ===
+
+import sqlite3
+import logging
+from datetime import datetime, timedelta
+from io import StringIO
+import csv
+
+logger = logging.getLogger(__name__)
+
+class StatsQueries:
+
+    def __init__(self, db_connection):
+        self.connection = db_connection
+
+    def _ensure_connection(self):
+        if not self.connection:
+            raise RuntimeError("Database not initialized.")
+        try:
+            self.connection.execute("SELECT 1")
+        except sqlite3.Error:
+            raise RuntimeError("Database connection lost.")
+
+    def get_stats(self, period: str = 'today') -> dict:
+        """Получение статистики с защитой от SQL injection"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+
+            ALLOWED_PERIODS = {'today', 'week', 'month'}
+            if period not in ALLOWED_PERIODS:
+                logger.warning(f"Invalid period: {period}, using 'today'")
+                period = 'today'
+
+            if period == 'today':
+                days_back = 0
+            elif period == 'week':
+                days_back = 7
+            else:  # month
+                days_back = 30
+
+            cutoff_date = (datetime.now() - timedelta(days=days_back)).date().isoformat()
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM orders
+                WHERE created_at >= ? AND status = 'active'
+            """, (cutoff_date,))
+            total_orders = cursor.fetchone()[0]
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM orders
+                WHERE created_at >= ? AND status = 'active'
+                AND booking_date > date('now')
+            """, (cutoff_date,))
+            planned_orders = cursor.fetchone()[0]
+
+            cursor.execute("""
+                SELECT service_name, COUNT(*) as count
+                FROM orders
+                WHERE created_at >= ? AND status = 'active'
+                GROUP BY service_name
+                ORDER BY count DESC
+                LIMIT 5
+            """, (cutoff_date,))
+            top_services = cursor.fetchall()
+
+            cursor.execute("""
+                SELECT SUM(price) FROM orders
+                WHERE created_at >= ? AND status = 'active'
+                AND (booking_date IS NULL OR booking_date <= date('now'))
+            """, (cutoff_date,))
+            total_revenue = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT SUM(price) FROM orders
+                WHERE created_at >= ? AND status = 'active'
+                AND booking_date > date('now')
+            """, (cutoff_date,))
+            planned_revenue = cursor.fetchone()[0] or 0
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM users
+                WHERE created_at >= ?
+            """, (cutoff_date,))
+            new_clients = cursor.fetchone()[0]
+
+            return {
+                'total_orders': total_orders,
+                'planned_orders': planned_orders,
+                'top_services': [(name, count) for name, count in top_services],
+                'total_revenue': total_revenue,
+                'planned_revenue': planned_revenue,
+                'new_clients': new_clients
+            }
+
+        except sqlite3.Error as e:
+            logger.error(f"Error getting stats: {e}")
+            return {
+                'total_orders': 0,
+                'planned_orders': 0,
+                'top_services': [],
+                'total_revenue': 0,
+                'planned_revenue': 0,
+                'new_clients': 0
+            }
+
+    def get_orders_csv(self, days: int = 30) -> bytes:
+        """Получение заказов за последние N дней в формате CSV"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
+
+            cursor.execute("""
+                SELECT id, user_id, service_id, service_name, price, client_name, phone,
+                       comment, booking_date, booking_time, status, created_at
+                FROM orders
+                WHERE created_at >= ?
+                ORDER BY created_at DESC
+            """, (cutoff_date,))
+
+            rows = cursor.fetchall()
+            output = StringIO()
+            writer = csv.writer(output, delimiter=';')
+
+            writer.writerow(['ID', 'User ID', 'Service ID', 'Service Name', 'Price',
+                           'Client Name', 'Phone', 'Comment', 'Booking Date',
+                           'Booking Time', 'Status', 'Created At'])
+
+            for row in rows:
+                writer.writerow(row)
+
+            csv_content = output.getvalue()
+            output.close()
+
+            return csv_content.encode('utf-8-sig')
+
+        except sqlite3.Error as e:
+            logger.error(f"Error generating CSV: {e}")
+            raise
+
+    def get_statistics_by_period(self, start_date: str, end_date: str) -> dict:
+        """
+        Получить статистику за указанный период
+        """
+        cursor = self.connection.execute("""
+            SELECT 
+                COUNT(*) as total_bookings,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
+                SUM(CASE WHEN status = 'completed' THEN price ELSE 0 END) as revenue
+            FROM orders
+            WHERE booking_date >= ? AND booking_date <= ?
+        """, (start_date, end_date))
+        
+        row = cursor.fetchone()
+        
+        return {
+            'total_bookings': row[0] or 0,
+            'completed': row[1] or 0,
+            'cancelled': row[2] or 0,
+            'revenue': row[3] or 0
+        }
+
+=== FILE: utils/db/user_queries.py ===
+
+import sqlite3
+import logging
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+class UserQueries:
+
+    def __init__(self, db_connection):
+        self.connection = db_connection
+
+    def _ensure_connection(self):
+        if not self.connection:
+            raise RuntimeError("Database not initialized.")
+        try:
+            self.connection.execute("SELECT 1")
+        except sqlite3.Error:
+            # The connection should be managed by the Database class
+            raise RuntimeError("Database connection lost.")
+
+    def add_user(self, user_id: int, username: str = None, first_name: str = None, last_name: str = None):
+        """Добавление или обновление пользователя"""
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            created_at = datetime.now().isoformat()
+
+            cursor.execute("""
+                INSERT OR IGNORE INTO users (user_id, username, first_name, last_name, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (user_id, username, first_name, last_name, created_at))
+
+            self.connection.commit()
+
+        except sqlite3.Error as e:
+            logger.error(f"Error adding user: {e}")
+
+    def get_last_client_details(self, user_id: int) -> dict | None:
+        try:
+            self._ensure_connection()
+            cursor = self.connection.cursor()
+            cursor.execute(
+                """
+                SELECT client_name, phone
+                FROM orders
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {'client_name': row[0], 'phone': row[1]}
+        except sqlite3.Error as e:
+            logger.error(f"Error getting last client details: {e}")
+            return None

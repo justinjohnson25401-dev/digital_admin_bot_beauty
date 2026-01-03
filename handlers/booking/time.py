@@ -1,54 +1,74 @@
 """
-Выбор времени (слоты).
+Обработчики для выбора времени.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, time, date
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
+
 from states.booking import BookingState
-from .keyboards import get_time_slots_keyboard
+from ..keyboards import get_time_slots_keyboard
+from .contact import request_contact_info
 
 logger = logging.getLogger(__name__)
 
 router = Router()
 
-async def show_time_slots(callback: CallbackQuery, state: FSMContext, config: dict, db_manager, selected_date):
-    """Показывает доступные слоты времени."""
+async def show_time_slots(callback_or_message, state: FSMContext, config: dict, db_manager, selected_date: date):
+    """Displays available time slots for the selected date."""
     data = await state.get_data()
-    date_str = selected_date.isoformat()
-    keyboard = get_time_slots_keyboard(config, db_manager, date_str, master_id=data.get('master_id'))
+    master_id = data.get('master_id')
     
-    date_label = "Сегодня" if selected_date == datetime.now().date() else selected_date.strftime('%d.%m.%Y')
+    # Decide if we're editing a message or sending a new one
+    message = callback_or_message if isinstance(callback_or_message, Message) else callback_or_message.message
+
+    # Fetch busy slots from the database
+    busy_slots = db_manager.get_busy_slots(selected_date.isoformat(), master_id)
+
+    # Generate all possible time slots based on config
+    work_hours_str = config.get('work_hours', {}).get(selected_date.strftime('%A').lower(), "09:00-18:00")
+    start_work_str, end_work_str = work_hours_str.split('-')
+    start_work_time = datetime.strptime(start_work_str, '%H:%M').time()
+    end_work_time = datetime.strptime(end_work_str, '%H:%M').time()
+    interval_minutes = config.get('booking_settings', {}).get('time_slot_interval', 30)
+
+    all_slots = []
+    current_time = datetime.combine(selected_date, start_work_time)
+    end_datetime = datetime.combine(selected_date, end_work_time)
+
+    while current_time < end_datetime:
+        all_slots.append(current_time.strftime('%H:%M'))
+        current_time += timedelta(minutes=interval_minutes)
+
+    # Filter out busy slots
+    available_slots = [slot for slot in all_slots if slot not in busy_slots]
     
-    await callback.message.edit_text(
-        f"📅 {date_label}\n\nВыберите время:",
-        reply_markup=keyboard
-    )
+    if not available_slots:
+        await message.edit_text("На выбранную дату нет свободных слотов. Пожалуйста, выберите другую дату.")
+        # Here you might want to send the calendar back
+        # from .date import proceed_to_date_selection
+        # await proceed_to_date_selection(callback_or_message, state, config, ...)
+        return
+
+    keyboard = get_time_slots_keyboard(available_slots)
+    await message.edit_text(f"🕒 Выберите время на {selected_date.strftime('%d.%m.%Y')}:", reply_markup=keyboard)
     await state.set_state(BookingState.choosing_time)
 
-@router.callback_query(F.data == "slot_taken")
-async def slot_taken_handler(callback: CallbackQuery):
-    await callback.answer("Это время уже занято", show_alert=True)
-
 @router.callback_query(BookingState.choosing_time, F.data.startswith("time:"))
-async def time_selected(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
-    """Обрабатывает выбор времени."""
-    booking_time = callback.data.split(":", 1)[1]
+async def time_selected(callback: CallbackQuery, state: FSMContext, db_manager):
+    """Handles the selection of a time slot."""
+    selected_time_str = callback.data.split(":", 1)[1]
     data = await state.get_data()
-    try:
-        slot_dt = datetime.combine(datetime.fromisoformat(data.get('booking_date')).date(), datetime.strptime(booking_time, "%H:%M").time())
-    except Exception:
-        await callback.answer("Некорректное время", show_alert=True)
-        return
-    if slot_dt <= datetime.now():
-        await callback.answer("Это время уже прошло", show_alert=True)
-        return
-
-    await state.update_data(booking_time=booking_time)
-    await callback.message.edit_text(f"📅 {datetime.fromisoformat(data.get('booking_date')).strftime('%d.%m.%Y')} в {booking_time}")
+    booking_date = date.fromisoformat(data.get('booking_date'))
     
-    from .contact import request_contact_info # Local import
+    # Combine date and time to create a full datetime object
+    booking_datetime = datetime.combine(booking_date, time.fromisoformat(selected_time_str))
+    
+    await state.update_data(booking_datetime=booking_datetime.isoformat())
+    logger.info(f"User {callback.from_user.id} selected time: {booking_datetime.isoformat()}")
+    
+    # Proceed to contact info request
     await request_contact_info(callback, state, db_manager)
     await callback.answer()

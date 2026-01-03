@@ -12,10 +12,8 @@ from .keyboards import (
     get_edit_service_keyboard,
     format_time
 )
-from handlers.booking.keyboards import get_dates_keyboard, get_time_slots_keyboard
-from utils.calendar import (
-    generate_calendar_keyboard
-)
+from handlers.booking.keyboards import get_time_slots_keyboard
+from utils.calendar import SimpleCalendar, SimpleCalendarCallback
 from utils.notify import send_order_change_to_admins
 
 logger = logging.getLogger(__name__)
@@ -53,57 +51,38 @@ async def edit_booking_menu_handler(callback: CallbackQuery, state: FSMContext, 
     )
     await callback.answer()
 
-# --- Обработка изменения даты и времени ---
+# --- Обработка изменения даты и времени -- -
 
 @router.callback_query(EditBookingState.choosing_action, F.data.startswith("edit_datetime:"))
 async def edit_datetime_start_handler(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Выберите новую дату:",
-        reply_markup=get_dates_keyboard()
+        reply_markup=await SimpleCalendar().start_calendar()
     )
     await state.set_state(EditBookingState.choosing_date)
     await callback.answer()
 
 
-@router.callback_query(EditBookingState.choosing_date, F.data.startswith(("quick_date:", "cal_date:")))
-async def edit_date_selected_handler(callback: CallbackQuery, state: FSMContext, config: dict, db_manager):
-    """Обработка выбора готовой даты (сегодня/завтра) или из календаря"""
-    booking_date = callback.data.split(":", 1)[1]
-    await state.update_data(new_booking_date=booking_date)
-    data = await state.get_data()
-    order_id = data.get('editing_order_id')
+@router.callback_query(EditBookingState.choosing_date, SimpleCalendarCallback.filter())
+async def edit_date_selected_handler(callback: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext, config: dict, db_manager):
+    """Обработка выбора даты из календаря"""
+    selected, date = await SimpleCalendar().process_selection(callback, callback_data)
 
-    keyboard = get_time_slots_keyboard(config, db_manager, booking_date, exclude_order_id=order_id)
-    
-    try:
-        date_obj = datetime.fromisoformat(booking_date)
-        date_formatted = date_obj.strftime('%d.%m.%Y')
-    except (ValueError, TypeError):
-        date_formatted = booking_date
+    if selected:
+        booking_date = date.strftime("%Y-%m-%d")
+        await state.update_data(new_booking_date=booking_date)
+        data = await state.get_data()
+        order_id = data.get('editing_order_id')
 
-    await callback.message.edit_text(
-        f"Дата: {date_formatted}\n\nВыберите новое время:",
-        reply_markup=keyboard
-    )
-    await state.set_state(EditBookingState.choosing_time)
-    await callback.answer()
+        keyboard = get_time_slots_keyboard(config, db_manager, booking_date, exclude_order_id=order_id)
+        
+        date_formatted = date.strftime('%d.%m.%Y')
 
-
-# --- Обработка календаря при редактировании ---
-
-@router.callback_query(EditBookingState.choosing_date, F.data.in_(["open_calendar", "cal_prev_month", "cal_next_month"]))
-async def edit_calendar_handler(callback: CallbackQuery, state: FSMContext, config: dict):
-    # await handle_calendar_action(callback, state, config, "booking")
-    pass # Временная заглушка
-
-
-@router.callback_query(EditBookingState.choosing_date, F.data.in_(["date_closed", "cancel_calendar"]))
-async def edit_calendar_action_handler(callback: CallbackQuery, state: FSMContext, config: dict):
-    if callback.data == "date_closed":
-        await callback.answer("❌ Эта дата недоступна", show_alert=True)
-    elif callback.data == "cancel_calendar":
-        await callback.message.edit_text("Выберите новую дату:", reply_markup=get_dates_keyboard(config=config))
-        await callback.answer()
+        await callback.message.edit_text(
+            f"Дата: {date_formatted}\n\nВыберите новое время:",
+            reply_markup=keyboard
+        )
+        await state.set_state(EditBookingState.choosing_time)
 
 # --- Обработка выбора времени и подтверждения ---
 

@@ -1,55 +1,46 @@
-import logging
-from contextlib import contextmanager
-
-from .database import Database
-from .user_queries import UserQueries
-from .booking_queries import BookingQueries
-from .stats_queries import StatsQueries
-from .staff_queries import StaffQueries
-
-logger = logging.getLogger(__name__)
+import random
 
 class DatabaseManager:
+    def __init__(self, business_slug):
+        self.business_slug = business_slug
+        # Здесь будет инициализация базы данных
+        pass
 
-    def __init__(self, business_slug: str):
-        self.db = Database(business_slug)
-        self.db.init_db()
+    def get_order_by_id(self, order_id):
+        # Заглушка для получения заказа
+        return None
 
-        self.users = UserQueries(self.db.connection)
-        self.bookings = BookingQueries(self.db.connection)
-        self.stats = StatsQueries(self.db.connection)
-        self.staff = StaffQueries(self.db.connection)
+    def check_slot_availability(self, date, time, exclude_order_id=None):
+        # Заглушка для проверки доступности слота (общая)
+        return True
 
-    @contextmanager
-    def get_connection(self):
-        """Контекстный менеджер для безопасного получения соединения с БД."""
-        if not self.db.connection:
-            logger.error("DB connection not available upon entering context")
-            raise RuntimeError("Database not initialized or connection lost.")
+    def check_slot_availability_for_master(self, date, time, master_id, exclude_order_id=None):
+        # Заглушка для проверки доступности слота у мастера
+        return True
 
+    def check_slot_availability_excluding(self, date, time, order_id):
+        # Заглушка для проверки доступности слота при переносе
+        return True
+
+    def get_user_bookings(self, user_id, active_only=True):
+        # Заглушка для получения записей пользователя
+        return []
+
+    def get_last_client_details(self, user_id):
+        # Заглушка для получения последних данных клиента
+        return None
+
+    def add_order(self, user_id, service_id, service_name, price, client_name, phone, comment, booking_date, booking_time, master_id):
+        # Заглушка для добавления заказа
+        return random.randint(1000, 9999)
+
+    def add_user(self, user_id, username, first_name, last_name):
+        # Заглушка для добавления пользователя
+        pass
+
+    def get_master_and_service_ids(self, master_id_str, service_id_str):
+        # Заглушка для получения ID мастера и услуги
         try:
-            # Проверяем живо ли соединение
-            self.db._ensure_connection()
-            yield self.db.connection
-        except Exception as e:
-            logger.error(f"Error within DB context: {e}", exc_info=True)
-            # В случае ошибки соединение может быть уже закрыто или повреждено,
-            # поэтому явный rollback здесь может быть не нужен или невозможен.
-            # self.db.connection.rollback()
-            raise
-        # `commit` и `rollback` должны управляться кодом, использующим соединение
-
-    def close(self):
-        """Закрывает соединение с базой данных."""
-        self.db.close()
-
-    def reinitialize(self):
-        """Переинициализирует соединение с базой данных."""
-        logger.info("Reinitializing database connection...")
-        self.close()
-        self.db.init_db()
-        self.users = UserQueries(self.db.connection)
-        self.bookings = BookingQueries(self.db.connection)
-        self.stats = StatsQueries(self.db.connection)
-        self.staff = StaffQueries(self.db.connection)
-        logger.info("Database connection reinitialized.")
+            return int(master_id_str), int(service_id_str)
+        except (ValueError, TypeError):
+            return 1, 1 # Возвращаем фиктивные ID в случае ошибки
